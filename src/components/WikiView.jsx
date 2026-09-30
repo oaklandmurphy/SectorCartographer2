@@ -21,33 +21,10 @@ const formatUpdatedAt = (value) => value ? new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium", timeStyle: "short",
 }).format(new Date(value)) : null;
 
-// GM Tools "haunted message" (kind: "wiki") standing in for the real article
-// this specific viewer would otherwise see — subtler than the full-screen
-// error prank, since the page around it looks completely normal. Clicking it
-// reveals the real title/body underneath (dismissHaunt, from App.jsx's
-// displayedWikiHaunt) rather than navigating anywhere.
-function HauntedArticle({ haunt, onReveal }) {
-  return (
-    <div onClick={onReveal} title="Something's off about this — click to refocus" style={{
-      cursor: "pointer", display: "flex", flexDirection: "column", gap: 10,
-      border: "1px solid #5c1f1f", background: "rgba(92,31,31,.08)", padding: 16,
-    }}>
-      <div className="stencil" style={{ fontSize: 24, fontWeight: 800, letterSpacing: ".03em", color: "#c9504f",
-        textShadow: "1px 0 #2ab6d9, -1px 0 #e63946" }}>
-        {haunt.title || "Untitled"}
-      </div>
-      <div style={{ fontSize: 13.5, lineHeight: 1.7, color: "#d8bcbc", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
-        {haunt.message}
-      </div>
-      <div style={{ fontSize: 10, color: "#8a6666", letterSpacing: ".04em" }}>click to refocus</div>
-    </div>
-  );
-}
-
 export default function WikiView({ wiki, roles = [], factions = [], threads = [], addThread, canEdit, isMobile, viewer, activeCat, setActiveCat, selectedId, setSelectedId,
   addEntry, patchEntry, deleteEntry, submitEntry, patchOwnEntry, withdrawEntry, approveEntry,
   publishEntry, unpublishEntry, publishEntryQuietly, proposeEdit,
-  loadImage, saveImage, loadBody, saveBody, loadAllBodies, haunt, dismissHaunt, globalExperimentalEditing }) {
+  loadImage, saveImage, loadBody, saveBody, loadAllBodies, globalExperimentalEditing }) {
   const confirm = useConfirm();
   const catMeta = WIKI_CATS.find((c) => c.id === activeCat) || WIKI_CATS[0];
   const catLabel = (id) => (WIKI_CATS.find((c) => c.id === id) || {}).label || id;
@@ -765,7 +742,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
                 a change to this entry — off (nobody) until the GM opts specific
                 roles in, same idea as visibility but a separate switch: a player
                 can be able to read a page without being able to test-edit it.
-                The GM's global toggle (GM Tools' haunt pane) overrides this list
+                The GM's global toggle (GM Tools) overrides this list
                 for everyone without changing it, so it's called out separately
                 rather than folded into the role count below. */}
             {!isEditProposal && roles.length > 0 && (
@@ -929,7 +906,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
                   added / red removed) as its actual published content instead of
                   plain merged text, so everyone can see it was published that way.
                   No preview here; the highlighting only ever appears on the real,
-                  published page. The GM's global toggle (GM Tools' haunt pane)
+                  published page. The GM's global toggle (GM Tools)
                   reveals it for every player on every entry, same as it does
                   for the highlight above, regardless of this entry's own
                   testEditRoles. */}
@@ -963,8 +940,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
               </Btn>
             </div>
           </>
-        ) : haunt && haunt.wikiId === selected.id ? (
-          <HauntedArticle haunt={haunt} onReveal={dismissHaunt} />
         ) : (
           <>
             {/* An entry published through Experimental Editing shows its change

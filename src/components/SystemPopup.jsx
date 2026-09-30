@@ -1,4 +1,4 @@
-import { Star, Plus, Trash2, X, Rocket, Zap, Fuel, Ghost, ImageOff } from "lucide-react";
+import { Star, Plus, Trash2, X, Rocket, Zap, Fuel, Ghost } from "lucide-react";
 import { T, inputStyle, selStyle, lbl } from "../theme.js";
 import { ICONS, ICON_KEYS } from "../constants.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
@@ -72,18 +72,6 @@ export default function SystemPopup({
                 onChange={(e) => patchSystem(system.id, { isPhantom: e.target.checked })} />
               <Ghost size={13} color={system.isPhantom ? T.accent : T.faint} />
               <span style={lbl}>Phantom system (GM decoy)</span>
-            </label>
-          </div>
-        )}
-        {isGM && (
-          <div>
-            <label style={{ display: "flex", alignItems: "center", gap: 7,
-              cursor: canEdit ? "pointer" : "default" }}
-              title="This system's plate shows as a broken-asset placeholder with corruption spreading out of it, for players and on your own map too. This checkbox (in this same popup) is how you turn it back off.">
-              <input type="checkbox" checked={!!system.corrupted} disabled={!canEdit}
-                onChange={(e) => patchSystem(system.id, { corrupted: e.target.checked })} />
-              <ImageOff size={13} color={system.corrupted ? T.danger : T.faint} />
-              <span style={lbl}>Corrupted</span>
             </label>
           </div>
         )}

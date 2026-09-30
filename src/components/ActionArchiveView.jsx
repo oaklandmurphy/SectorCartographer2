@@ -4,7 +4,6 @@ import { T, F, lbl, selStyle } from "../theme.js";
 import Btn from "./ui/Btn.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
 import MissionResolution from "./ui/MissionResolution.jsx";
-import CorruptedTag from "./ui/CorruptedTag.jsx";
 
 // A player's own record of everything they've put in front of the GM: agent
 // action requests and squadron missions, in one place, split by the turn they
@@ -186,7 +185,6 @@ export default function ActionArchiveView({
             {it.modifierIds.map((id) => {
               const m = modObj(id);
               if (!m || !m.name) return null;
-              if (m.corrupted) return <CorruptedTag key={id} icon>{m.name}</CorruptedTag>;
               return (
                 <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 3,
                   border: `1px solid ${color}`, borderRadius: 2, padding: "1px 5px",

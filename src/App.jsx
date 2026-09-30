@@ -24,7 +24,6 @@ import { useMapInteractions } from "./hooks/useMapInteractions.js";
 import { useHashRoute } from "./hooks/useHashRoute.js";
 import { ConfirmProvider } from "./hooks/useConfirm.jsx";
 import Btn from "./components/ui/Btn.jsx";
-import HauntedOverlay from "./components/ui/HauntedOverlay.jsx";
 import AccessControl from "./components/AccessControl.jsx";
 import Toolbar, { SaveStatus } from "./components/Toolbar.jsx";
 import MobileToolbar from "./components/MobileToolbar.jsx";
@@ -39,7 +38,6 @@ const OddsView = lazy(() => import("./components/OddsView.jsx"));
 const UpdatesView = lazy(() => import("./components/UpdatesView.jsx"));
 const AgentsView = lazy(() => import("./components/AgentsView.jsx"));
 const GMToolsView = lazy(() => import("./components/GMToolsView.jsx"));
-const ExperimentalModeView = lazy(() => import("./components/ExperimentalModeView.jsx"));
 const TimelineView = lazy(() => import("./components/TimelineView.jsx"));
 const ActionArchiveView = lazy(() => import("./components/ActionArchiveView.jsx"));
 
@@ -59,22 +57,6 @@ const mergeById = (existing, incoming) => {
 const TRACKER_LEVEL_COLOR = { low: T.accent, moderate: T.amber, high: "#c2551f", critical: T.danger };
 const TRACKER_LEVEL_ABBR = { low: "L", moderate: "M", high: "H", critical: "C" };
 const TRACKER_LEVEL_LABEL = { low: "Low", moderate: "Moderate", high: "High", critical: "Critical" };
-
-// The Experimental Mode nav tab's whole point is to look wrong sitting next to
-// the rest of the stencil-font, uppercase, dark-panel tab strip — like this
-// one tab's CSS never loaded. Same idea as components/ui/CorruptedTag.jsx's
-// RESET (a "corrupted" modifier/agent stripped of the app's styling down to
-// plain black-on-white), just for a clickable nav tab instead of an inline
-// chip: every themed property explicitly put back to a plain browser default,
-// not merely omitted, since omitting a property here would just inherit the
-// dark theme from the tab strip around it.
-const UNSTYLED_TAB_STYLE = {
-  display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
-  background: "#fff", color: "#111", border: "1px solid #767676", borderRadius: 0,
-  padding: "6px 10px", margin: 0, fontFamily: "Georgia, 'Times New Roman', Times, serif",
-  fontWeight: 400, fontStyle: "normal", letterSpacing: "normal", textTransform: "none",
-  fontSize: 13, lineHeight: "normal", boxShadow: "none", textAlign: "left",
-};
 
 export default function GalaxySectorMap() {
   // Empty until the saved sector loads from storage; the loading gate below keeps
@@ -96,7 +78,6 @@ export default function GalaxySectorMap() {
   const [surfaceForces, setSurfaceForces] = useState([]); // per-faction, per-planet surface-conflict footholds (Assets tab: Surface Forces subtab) — infiltrated/cell/army
   const [surfaceBattles, setSurfaceBattles] = useState([]); // two-faction tug-of-war progress bars (Assets tab: Surface Battles subtab) — see nextTurn
   const [notes, setNotes] = useState([]); // GM Tools: freeform notes + tracked roll resolutions
-  const [haunts, setHaunts] = useState([]); // GM Tools: "haunted messages" — fake errors/codex articles/updates aimed at a specific player role
   const [agents, setAgents] = useState([]); // covert operatives, one optional character each, own-faction only
   const [orders, setOrders] = useState([]); // fleet/agent move-order proposals the GM resolves by hand
   const [actions, setActions] = useState([]); // text action requests players raise through an agent for the GM to resolve
@@ -131,9 +112,7 @@ export default function GalaxySectorMap() {
 
   const [lockCode, setLockCode] = useState("");   // shared: "" means editing is open to everyone; else the GM code
   const [fleetsPublic, setFleetsPublic] = useState(true); // shared: false hides fleet positions from anyone without a matching login
-  const [interfaceGlitch, setInterfaceGlitch] = useState(false); // shared: GM's "haunted TV" toggle — ambient whole-interface flicker/shear for every viewer, see index.css .interface-glitch-*
   const [globalExperimentalEditing, setGlobalExperimentalEditing] = useState(false); // shared: GM switch — when on, every player gets Experimental Editing on every article, regardless of that entry's own testEditRoles
-  const [experimentalVotes, setExperimentalVotes] = useState([]); // shared: roleIds of players who've cast an advisory vote to end Experimental Mode — the GM's endExperimentalMode() below has final discretion regardless of the tally
   const [turnNumber, setTurnNumber] = useState(0); // shared: bumped by nextTurn(), stamped onto actions as they're archived — the campaign starts at turn 0
   const [turns, setTurns] = useState([]); // shared: turn-boundary records { turn, startedAt, name } — when each turn began (stamped by nextTurn(), editable by the GM on the Timeline tab) and the GM's optional name for it
   const [turnSnapshots, setTurnSnapshots] = useState([]); // shared: one frozen board-state record per closed-out turn (stamped by nextTurn(), or backfilled from a GM export) — see lib/turnSnapshot.js
@@ -154,22 +133,6 @@ export default function GalaxySectorMap() {
   // tab instead (Fleet roster, Agents, Assets…) stays editable regardless.
   const [editLocked, setEditLocked] = useState(true);
   const editingEnabled = canEdit && !editLocked;
-
-  // Personal, unsaved GM-only dry run of the "haunted TV" corruption — never
-  // written to the shared sector (see toggleInterfaceGlitch below for the real,
-  // every-viewer switch), so flipping it on previews the effect on this GM's
-  // own screen only; a player's browser never even runs the code path that
-  // could set this true. See effectiveGlitch below for where it merges with
-  // the real, shared interfaceGlitch flag.
-  const [previewGlitch, setPreviewGlitch] = useState(false);
-
-  // Personal, unsaved: any viewer (GM or player) can opt their own screen out
-  // of the shear/flicker/overlay below via the Experimental Mode tab's
-  // "Remove Flicker" toggle, without touching the shared interfaceGlitch flag
-  // — so it only ever affects this browser, never anyone else's. The
-  // corruption is still "on" for tab visibility / vote purposes (effectiveGlitch,
-  // below); this only suppresses the visual effect at the point it's rendered.
-  const [removeFlicker, setRemoveFlicker] = useState(false);
 
   const isMobile = useResponsive();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -212,8 +175,8 @@ export default function GalaxySectorMap() {
   // and now also `wiki` and `art` (see the wiki/art load-and-autosave block
   // further down), pulled off the hot root listener for the same reason.
   const sector = useMemo(
-    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, haunts, lockCode, fleetsPublic, turnNumber, interfaceGlitch, globalExperimentalEditing, experimentalVotes }),
-    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, haunts, lockCode, fleetsPublic, turnNumber, interfaceGlitch, globalExperimentalEditing, experimentalVotes],
+    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber, globalExperimentalEditing }),
+    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber, globalExperimentalEditing],
   );
   // The sector as the database currently has it. Null until the load below fills
   // it in, which is also what stops an autosave from firing against an empty
@@ -265,12 +228,9 @@ export default function GalaxySectorMap() {
       setMissions(data.missions);
       setReplenishments(data.replenishments);
       setTurns(data.turns); setThreads(data.threads); setEndTurnChecks(data.endTurnChecks);
-      setHaunts(data.haunts);
       setLockCode(data.lockCode); setFleetsPublic(data.fleetsPublic !== false);
       setTurnNumber(data.turnNumber || 0);
-      setInterfaceGlitch(!!data.interfaceGlitch);
       setGlobalExperimentalEditing(!!data.globalExperimentalEditing);
-      setExperimentalVotes(data.experimentalVotes || []);
     };
     const unsub = subscribeSector(
       ({ data, schema }) => {
@@ -390,36 +350,12 @@ export default function GalaxySectorMap() {
     if (!canEdit) return;
     setFleetsPublic(next);
   }
-  // GM switch: true wraps the whole app in the ambient "haunted TV" glitch
-  // (see index.css .interface-glitch-*) for every viewer, not just this one —
-  // it rides the shared sector like fleetsPublic, not personal UI state.
-  function toggleInterfaceGlitch(next) {
-    if (!canEdit) return;
-    setInterfaceGlitch(next);
-  }
-  // GM-only: preview the same corruption locally, without writing to the
-  // shared sector — see the previewGlitch state above. Gated on isGM rather
-  // than canEdit since "open mode" (no lock code set at all) has no players to
-  // hide anything from in the first place, but this button only ever renders
-  // inside GM Tools (isGM-gated already), so the check is just a backstop.
-  function togglePreviewGlitch(next) {
-    if (!isGM) return;
-    setPreviewGlitch(next);
-  }
   // GM switch: true reveals Experimental Editing to every player on every
-  // article, overriding each entry's own testEditRoles list — shared like
-  // interfaceGlitch above, not personal UI state.
+  // article, overriding each entry's own testEditRoles list — shared
+  // like fleetsPublic, not personal UI state.
   function toggleGlobalExperimentalEditing(next) {
     if (!canEdit) return;
     setGlobalExperimentalEditing(next);
-  }
-  // Player: cast or withdraw their own advisory vote to end Experimental Mode,
-  // on the Experimental Mode tab. Purely informational — see endExperimentalMode
-  // below, which is the GM's actual switch and doesn't check this tally at all.
-  function toggleExperimentalVote() {
-    if (viewer.kind !== "player" || !viewer.roleId) return;
-    const id = viewer.roleId;
-    setExperimentalVotes((v) => (v.includes(id) ? v.filter((rid) => rid !== id) : [...v, id]));
   }
   // GM: the kill switch for the whole Experimental Editing gimmick (Experimental
   // Mode tab). Every codex article currently live as a highlighted (green/red)
@@ -453,7 +389,6 @@ export default function GalaxySectorMap() {
         testEditCanon: false, testEditRoles: undefined, updatedAt: now };
     }));
     setGlobalExperimentalEditing(false);
-    setExperimentalVotes([]); // the vote this round was about is resolved — clear the tally for next time
     if (oldBodies && newBodies) {
       await Promise.all(affected.flatMap((e, i) => [
         saveWikiBody(e.id, oldBodies[i]),
@@ -495,7 +430,6 @@ export default function GalaxySectorMap() {
     setFleets((fs) => fs.map((f) => ({
       ...f, ships: f.ships.map((sh) => (Array.isArray(sh.visibility) ? { ...sh, visibility: scrub(sh.visibility) } : sh)),
     })));
-    setExperimentalVotes((v) => v.filter((rid) => rid !== id));
   }
 
   const factionById = (id) => factions.find((f) => f.id === id) || factions[factions.length - 1];
@@ -789,16 +723,6 @@ export default function GalaxySectorMap() {
      these are called out by name so only an authenticated GM (viewer.kind
      === "admin") may touch them. */
   const isGM = viewer.kind === "admin";
-  // The corruption effect actually applied to this browser: either the real,
-  // shared switch (interfaceGlitch — every viewer sees it) or the GM's own
-  // local preview of it (previewGlitch, never written anywhere, so a player's
-  // browser can never have this be true from their own state).
-  const effectiveGlitch = interfaceGlitch || (isGM && previewGlitch);
-  // The corruption is still "on" (effectiveGlitch above) for tab visibility and
-  // vote purposes even after this viewer opts out — only the rendered shear/
-  // flicker/overlay is suppressed, and only on this browser.
-  const showFlicker = effectiveGlitch && !removeFlicker;
-
   /* ------------------------------------------------ read receipts: not part
      of the sector tree above (see READ_COLLECTIONS in sectorSchema.js) since
      it doesn't need to be live, but a faction's Updates badge needs it loaded
@@ -1364,128 +1288,6 @@ export default function GalaxySectorMap() {
     if (!isGM) return;
     setNotes((ns) => ns.filter((n) => n.id !== id));
   }
-
-  /* ---- GM Tools "haunted messages": fake error screens (and haunted codex
-     articles/updates) the GM can aim at a specific player role — see
-     components/ui/HauntedOverlay.jsx for the display and pendingHaunt/
-     displayedHaunt below for how a target's client picks one up. `haunts` is
-     just another entry in COLLECTIONS (sectorSchema.js) now, so it rides the
-     same subscribeSector/saveSector pipeline as every other collection —
-     no separate database path or rules entry needed, and every viewer
-     already gets it live since that subscription is never gated to the GM. */
-  // GM-only: compose and send. One entry per targeted role, so "send to three
-  // players" is three independent haunts, each tracked (and dismissed) on its
-  // own rather than sharing one seenAt that the first viewer would consume.
-  function addHaunt({ roleId, kind, style, title, code, message, wikiId, agentId, resolution }) {
-    if (!isGM || !roleId) return;
-    const k = kind || "error";
-    if (k === "wiki" && !wikiId) return; // a haunted article needs a real article to stand in for
-    if (k === "action" && (!agentId || !resolution || !resolution.outcome)) return; // needs a target agent and a ruled outcome
-    const t = (title || "").trim();
-    const m = (message || "").trim();
-    // An "update" haunt is nothing but a title (see UpdatesView — clicking it
-    // just makes it vanish, no body ever shows); every other kind needs the message
-    // ("action" repurposes it as the fake order text the phantom request shows).
-    if (k === "update" ? !t : !m) return;
-    const entry = { id: uid("haunt"), roleId, kind: k, wikiId: k === "wiki" ? wikiId : "",
-      style: style || "http500", title: t, code: (code || "").trim(),
-      message: m, agentId: k === "action" ? agentId : "", resolution: k === "action" ? resolution : null,
-      createdAt: Date.now(), seenAt: null };
-    setHaunts((hs) => [...hs, entry]);
-  }
-  function removeHaunt(id) {
-    if (!isGM) return;
-    setHaunts((hs) => hs.filter((h) => h.id !== id));
-  }
-  // Called by the overlay itself the moment it renders a haunt — not gated to
-  // isGM, since it's the target's own client marking its own message read.
-  function markHauntSeen(id) {
-    setHaunts((hs) => hs.map((h) => (h.id === id && !h.seenAt ? { ...h, seenAt: Date.now() } : h)));
-  }
-  // The haunt (if any) queued for this viewer specifically, oldest first — only
-  // a signed-in player role can be a target, so the GM never sees their own
-  // sends and an anonymous/open viewer never matches one.
-  const pendingHaunt = useMemo(() => {
-    if (viewer.kind !== "player") return null;
-    const mine = (haunts || [])
-      .filter((h) => (h.kind || "error") === "error" && h.roleId === viewer.roleId && !h.seenAt)
-      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    return mine[0] || null;
-  }, [haunts, viewer.kind, viewer.roleId]);
-  // Locks onto one haunt id and keeps rendering it (ignoring further haunts
-  // updates) until the viewer dismisses it. Without this, stamping seenAt
-  // below would immediately drop it out of pendingHaunt and the overlay would
-  // vanish before anyone had a chance to read it — the click-to-dismiss is a
-  // purely local affordance; seenAt is what makes a refresh not show it again.
-  const [displayedHauntId, setDisplayedHauntId] = useState(null);
-  useEffect(() => {
-    if (pendingHaunt && !displayedHauntId) {
-      setDisplayedHauntId(pendingHaunt.id);
-      markHauntSeen(pendingHaunt.id);
-    }
-  }, [pendingHaunt, displayedHauntId]);
-  const displayedHaunt = displayedHauntId ? (haunts || []).find((h) => h.id === displayedHauntId) || null : null;
-
-  // "wiki" haunts: a specific codex article's title/body is swapped out for
-  // this viewer while they're reading exactly that article. Re-armed only on
-  // navigation (the effect below keys on selectedWikiId, not on `haunts`), so
-  // a GM haunting the article the player already has open takes a re-open to
-  // land — deliberately simple rather than reactively swapping content out
-  // from under someone mid-read.
-  const pendingWikiHaunt = useMemo(() => {
-    if (viewer.kind !== "player" || !selectedWikiId) return null;
-    const mine = (haunts || [])
-      .filter((h) => h.kind === "wiki" && h.roleId === viewer.roleId && h.wikiId === selectedWikiId && !h.seenAt)
-      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    return mine[0] || null;
-  }, [haunts, viewer.kind, viewer.roleId, selectedWikiId]);
-  const [displayedWikiHaunt, setDisplayedWikiHaunt] = useState(null);
-  useEffect(() => {
-    if (pendingWikiHaunt) {
-      setDisplayedWikiHaunt(pendingWikiHaunt);
-      markHauntSeen(pendingWikiHaunt.id);
-    } else {
-      setDisplayedWikiHaunt(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWikiId]);
-
-  // "update" haunts: a fake entry with no real article behind it, planted in
-  // this viewer's Updates feed (see UpdatesView's merged article list below).
-  // Unlike the other two kinds, nothing marks it seen just by rendering the
-  // list — only actually acknowledging it (dismissHauntedUpdate) does, so it
-  // keeps showing up (and keeps padding the bell badge) until they deal with it.
-  const pendingUpdateHaunts = useMemo(() => {
-    if (viewer.kind !== "player") return [];
-    return (haunts || [])
-      .filter((h) => h.kind === "update" && h.roleId === viewer.roleId && !h.seenAt)
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  }, [haunts, viewer.kind, viewer.roleId]);
-
-  // "action" haunts: a phantom resolved request planted on one of this
-  // viewer's own agents (AgentsView merges these into that agent's real
-  // action list, unfiltered — it's meant to sit in their history
-  // permanently, same as a real resolved request would, so only the GM
-  // removing it via GM Tools' Haunt "Sent" list makes it go away there).
-  const pendingActionHaunts = useMemo(() => {
-    if (viewer.kind !== "player") return [];
-    return (haunts || []).filter((h) => h.kind === "action" && h.roleId === viewer.roleId);
-  }, [haunts, viewer.kind, viewer.roleId]);
-  // The same haunts, but only the ones not yet acknowledged, and with the
-  // agent's name/faction resolved so they can slot straight into Updates'
-  // "Action requests resolved" list next to real ones (see unseenResolvedActions
-  // just below) — same "keeps padding the bell badge until dealt with" rule as
-  // pendingUpdateHaunts, via UpdatesView's dismissHauntedAction (markHauntSeen).
-  const unseenActionHaunts = useMemo(() => pendingActionHaunts
-    .filter((h) => !h.seenAt)
-    .map((h) => {
-      const agent = agents.find((x) => x.id === h.agentId);
-      const fac = agent && factions.find((f) => f.id === agent.factionId);
-      const member = fac && (fac.members || []).find((m) => m.id === agent.memberId);
-      return { ...h, agentName: member ? member.name : "Agent", factionId: agent ? agent.factionId : null };
-    })
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
-  [pendingActionHaunts, agents, factions]);
 
   /* ---- agents: covert operatives, capped per faction by the GM (faction.agentCap).
      Adding and removing an agent is GM-only (open mode too) — the GM owns each
@@ -2518,12 +2320,6 @@ export default function GalaxySectorMap() {
       });
       return next;
     });
-    // Sweep any haunted actions along with the real ones — otherwise "Acknowledge
-    // all" would visibly leave one card behind, which is a tell that it's fake.
-    if (unseenActionHaunts.length > 0) {
-      const ids = unseenActionHaunts.map((h) => h.id);
-      setHaunts((hs) => hs.map((h) => (ids.includes(h.id) ? { ...h, seenAt: now } : h)));
-    }
   }
   function markMissionSeen(mission) {
     const factionId = viewer.roleFactionId;
@@ -3043,9 +2839,6 @@ export default function GalaxySectorMap() {
   // (Agents/GM Tools); `badge` is the little count chip, 0/undefined for none.
   const navTabs = [
     { id: "map", label: "Map", icon: MapIcon, title: "Sector map", show: true },
-    { id: "experimental", label: "Experimental Mode", icon: ImageOff,
-      title: isGM ? "Player vote tally for ending Experimental Editing — final discretion is yours" : "Vote on whether to end Experimental Editing",
-      show: (isGM || viewer.kind === "player") && effectiveGlitch, badge: experimentalVotes.length, crack: true },
     { id: "fleet", label: "Fleets", icon: Ship, title: "Fleet rosters", show: true },
     { id: "agents", label: "Agents", icon: VenetianMask, title: "Agents & operatives", show: canOrder },
     { id: "assets", label: "Assets", icon: Package, title: "Faction assets: modifiers, trackers, resources, projects & surface forces", show: true },
@@ -3054,8 +2847,7 @@ export default function GalaxySectorMap() {
       badge: canEdit ? pendingWikiCount : 0 },
     { id: "timeline", label: "Timeline", icon: History, title: "Campaign timeline — codex articles laid out by turn", show: true },
     { id: "updates", label: "Updates", icon: Bell, title: "Articles, action resolutions & mission resolutions your faction has not seen", show: true,
-      badge: unseenArticles.length + unseenResolvedActions.length + unseenResolvedMissions.length
-        + pendingUpdateHaunts.length + unseenActionHaunts.length },
+      badge: unseenArticles.length + unseenResolvedActions.length + unseenResolvedMissions.length },
     { id: "archive", label: "Archive", icon: Archive, title: "Your submitted actions & squadron orders, by turn", show: canOrder },
     { id: "odds", label: "Odds", icon: Dices, title: "Mission odds table", show: true },
     { id: "gmtools", label: "GM Tools", icon: Gavel, title: "GM tools: action & mission requests, roll resolution & notes",
@@ -3068,24 +2860,8 @@ export default function GalaxySectorMap() {
 
   return (
     <ConfirmProvider>
-    <div className={showFlicker ? "interface-glitch-root" : undefined}
-      style={{ display: "flex", flexDirection: "column", height: "100vh", background: T.void,
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: T.void,
       color: T.text, fontFamily: F.body, overflow: "hidden" }}>
-
-      {/* GM's whole-interface "haunted TV" corruption (App.jsx interfaceGlitch,
-          toggled from GM Tools) — ambient, non-blocking, ON for every viewer at
-          once rather than aimed at one role like the haunts below. The shear/
-          flicker above is on the root wrapper itself; this fixed layer adds
-          scanlines, a vignette pulse and a rolling tracking band on top.
-          effectiveGlitch also folds in the GM's own local preview (see
-          togglePreviewGlitch) — that half never touches shared state, so it
-          only ever renders on the GM's own screen. */}
-      {showFlicker && <div className="interface-glitch-overlay" />}
-
-      {/* GM's "haunted message" prank — a fake full-screen error aimed at this
-          viewer's role, if one is pending. Sits above everything, including the
-          loading gate below, so it can even greet a fresh page load. */}
-      <HauntedOverlay haunt={displayedHaunt} onDismiss={() => setDisplayedHauntId(null)} />
 
       {/* loading gate — avoids flashing an empty sector before the saved sector loads */}
       {!loaded && (
@@ -3112,14 +2888,12 @@ export default function GalaxySectorMap() {
         background: `linear-gradient(180deg, #0a0906, ${T.panel})`, borderBottom: `1px solid ${T.line}`, zIndex: 41 }}>
         {isMobile ? (
           <button onClick={() => { setNavMenuOpen((o) => !o); setMobileMenuOpen(false); }}
-            style={activeNavTab.crack
-              ? { ...UNSTYLED_TAB_STYLE, flex: "1 1 auto", minWidth: 0 }
-              : { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: "1 1 auto", minWidth: 0,
-                  background: T.panel3, border: `1px solid ${T.line}`, borderRadius: 2, padding: "7px 10px", color: T.text,
-                  fontFamily: F.body, fontSize: 12.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
+            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: "1 1 auto", minWidth: 0,
+              background: T.panel3, border: `1px solid ${T.line}`, borderRadius: 2, padding: "7px 10px", color: T.text,
+              fontFamily: F.body, fontSize: 12.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
             {navMenuOpen
-              ? <Menu size={15} color={activeNavTab.crack ? "#111" : T.accent} />
-              : <activeNavTab.icon size={15} color={activeNavTab.crack ? "#111" : T.accent} />}
+              ? <Menu size={15} color={T.accent} />
+              : <activeNavTab.icon size={15} color={T.accent} />}
             <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {activeNavTab.label}
             </span>
@@ -3128,14 +2902,7 @@ export default function GalaxySectorMap() {
         ) : (
           <div className="scroll" style={{ display: "flex", gap: 3, background: T.panel3, padding: 3,
             border: `1px solid ${T.line}`, overflowX: "auto", flex: "1 1 auto", minWidth: 0 }}>
-            {navTabs.map((t) => (t.crack ? (
-              // Deliberately unstyled (see UNSTYLED_TAB_STYLE above) rather than
-              // themed like every other tab here — that mismatch IS the highlight.
-              <button key={t.id} onClick={() => selectNavTab(t.id)} title={t.title} style={UNSTYLED_TAB_STYLE}>
-                <t.icon size={14} color="#111" /> {t.label}
-                {t.badge > 0 && <span>({t.badge})</span>}
-              </button>
-            ) : (
+            {navTabs.map((t) => (
               <Btn key={t.id} active={activeTab === t.id} onClick={() => selectNavTab(t.id)} title={t.title}
                 style={{ border: "none", borderRadius: 0, background: activeTab === t.id ? undefined : "transparent" }}>
                 <t.icon size={14} /> {t.label}
@@ -3147,7 +2914,7 @@ export default function GalaxySectorMap() {
                   </span>
                 )}
               </Btn>
-            )))}
+            ))}
           </div>
         )}
 
@@ -3158,18 +2925,6 @@ export default function GalaxySectorMap() {
               padding: 8, display: "flex", flexDirection: "column", gap: 5 }}>
             {navTabs.map((t) => {
               const on = t.id === activeTab;
-              if (t.crack) {
-                // Deliberately unstyled (see UNSTYLED_TAB_STYLE above) rather
-                // than themed like every other row here — the mismatch IS the
-                // highlight, same as the desktop strip's version of this tab.
-                return (
-                  <button key={t.id} onClick={() => selectNavTab(t.id)} title={t.title}
-                    style={{ ...UNSTYLED_TAB_STYLE, width: "100%" }}>
-                    <t.icon size={15} color="#111" /> {t.label}
-                    {t.badge > 0 && <span>({t.badge})</span>}
-                  </button>
-                );
-              }
               return (
                 <button key={t.id} onClick={() => selectNavTab(t.id)} title={t.title}
                   style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", width: "100%",
@@ -3393,7 +3148,6 @@ export default function GalaxySectorMap() {
             proposeEdit={proposeWikiEdit}
             loadImage={loadWikiImage} saveImage={saveWikiImage}
             loadBody={loadWikiBody} saveBody={saveWikiBody} loadAllBodies={loadAllWikiBodies}
-            haunt={displayedWikiHaunt} dismissHaunt={() => setDisplayedWikiHaunt(null)}
             globalExperimentalEditing={globalExperimentalEditing}
           />
         )}
@@ -3417,10 +3171,7 @@ export default function GalaxySectorMap() {
             resolvedMissions={unseenResolvedMissions} openMission={goToFleet}
             acknowledgeMission={markMissionSeen} acknowledgeAllMissions={acknowledgeAllMissionUpdates}
             replenishments={unseenReplenishments} openReplenishment={goToFleet}
-            acknowledgeReplenishment={markReplenishmentSeen} acknowledgeAllReplenishments={acknowledgeAllReplenishmentUpdates}
-            hauntedUpdates={pendingUpdateHaunts} dismissHauntedUpdate={markHauntSeen}
-            hauntedActions={unseenActionHaunts} openHauntedAction={(h) => goToAgentAction(h.agentId, h.factionId)}
-            dismissHauntedAction={markHauntSeen} />
+            acknowledgeReplenishment={markReplenishmentSeen} acknowledgeAllReplenishments={acknowledgeAllReplenishmentUpdates} />
         )}
 
         {/* A player's own record of everything they've submitted to the GM. Fed
@@ -3466,7 +3217,6 @@ export default function GalaxySectorMap() {
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
             submitAction={submitAction} removeAction={removeAction}
             initialAgentId={initialAgentId}
-            hauntedActions={pendingActionHaunts}
           />
         )}
 
@@ -3481,10 +3231,8 @@ export default function GalaxySectorMap() {
             roles={roles} factions={factions} modifiers={modifiers} notes={notes} isMobile={isMobile}
             resourceTransactions={resourceTransactions} removeResourceTransaction={removeResourceTransaction}
             addNote={addNote} removeNote={removeNote}
-            haunts={haunts} addHaunt={addHaunt} removeHaunt={removeHaunt} wiki={wiki}
-            interfaceGlitch={interfaceGlitch} toggleInterfaceGlitch={toggleInterfaceGlitch}
-            previewGlitch={previewGlitch} togglePreviewGlitch={togglePreviewGlitch}
-            globalExperimentalEditing={globalExperimentalEditing} toggleGlobalExperimentalEditing={toggleGlobalExperimentalEditing}
+            wiki={wiki} globalExperimentalEditing={globalExperimentalEditing} toggleGlobalExperimentalEditing={toggleGlobalExperimentalEditing}
+            endExperimentalMode={endExperimentalMode}
             actions={actions} archivedActions={archivedActions} agents={agents} systems={systems} links={links}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
             resolveAction={resolveAction} reopenAction={reopenAction} removeAction={removeAction}
@@ -3503,11 +3251,6 @@ export default function GalaxySectorMap() {
           />
         )}
 
-        {activeTab === "experimental" && (isGM || viewer.kind === "player") && effectiveGlitch && (
-          <ExperimentalModeView isMobile={isMobile} isGM={isGM} viewer={viewer} roles={roles}
-            votes={experimentalVotes} toggleVote={toggleExperimentalVote} onEnd={endExperimentalMode}
-            removeFlicker={removeFlicker} setRemoveFlicker={setRemoveFlicker} />
-        )}
       </Suspense>
 
       {/* ship drag ghost */}

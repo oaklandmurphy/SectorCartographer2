@@ -45,7 +45,7 @@ export const COLLECTIONS = [
   "factions", "relations", "layers", "systems",
   "links", "fleets", "ships", "strokes", "roles", "modifiers", "resources", "resourceTransactions",
   "projects", "surfaceForces", "surfaceBattles", "agents", "orders", "actions", "missions",
-  "replenishments", "turns", "endTurnChecks", "haunts", "threads",
+  "replenishments", "turns", "endTurnChecks", "threads",
 ];
 
 // Ship art and the wiki index each get their own top-level path (sectorArt/
@@ -140,7 +140,7 @@ export function buildReadsUpdates(collections, prevObj, nextObj) {
 // `s.markers.map(...)` without a guard at every site.
 const defaults = {
   factions: { members: [], wikiId: null, isPhantom: false },
-  systems: { markers: [], factionId: "fac_none", hasJumpGate: false, hasOssite: false, ossiteTarget: 8, isPhantom: false, corrupted: false },
+  systems: { markers: [], factionId: "fac_none", hasJumpGate: false, hasOssite: false, ossiteTarget: 8, isPhantom: false },
   fleets: { systemId: null },
   strokes: { pts: [] },
   // `body` is deliberately absent — a page's full text lives at its own path
@@ -192,25 +192,6 @@ const defaults = {
   // is null until Next Turn reveals it — the "resolvedAt" analog Updates keys on.
   replenishments: { lines: [], systemId: null, factionId: null, revealedAt: null },
   relations: {}, layers: {}, links: {}, wikiReads: {}, roles: {}, art: {}, modifiers: {}, resources: {}, resourceTransactions: {}, notes: { text: "" }, ships: {},
-  // roleId: "" would collide with "no target" so a haunt always names a role.
-  // kind picks the delivery: "error" (full-screen fake crash, HauntedOverlay),
-  // "wiki" (a specific codex article's title/body swapped out while the
-  // target reads it — wikiId names which one), "update" (a fake entry planted
-  // in the target's Updates feed with no real article behind it), or "action"
-  // (a fake resolved action request planted directly on one of the target's
-  // own agents — agentId names which one, message is the fake order text, and
-  // resolution is a full { outcome, roll, dice, mods, situational, total, text }
-  // object built the same way GMToolsView's real resolve() builds one, so
-  // AgentsView can render it through the same ActionResolution component a
-  // real ruling uses, and it also surfaces in the target's Updates feed
-  // (App.jsx's unseenActionHaunts) exactly like a real resolution would. The
-  // AgentsView copy is permanent regardless of seenAt — see App.jsx's
-  // pendingActionHaunts — only the Updates entry and the GM's own "delivered"
-  // read on it depend on seenAt, same as an "update" haunt.
-  // seenAt is null until the target's client renders it, at which point it's
-  // stamped so the same message never shows twice, even across a refresh.
-  haunts: { roleId: "", kind: "error", wikiId: "", style: "http500", title: "", code: "", message: "",
-    agentId: "", resolution: null, seenAt: null },
   actionReads: {}, missionReads: {}, replenishmentReads: {},
   // A turn boundary record: the moment turn `turn` began (stamped by nextTurn(),
   // or set/adjusted by the GM on the Timeline tab), plus the GM's optional `name`
@@ -509,8 +490,7 @@ export function decodeV2Fleets(rawFleetsNode) {
 // everyone. One path in means the lock cannot be left behind.
 export const emptySector = () =>
   COLLECTIONS.reduce((acc, c) => ({ ...acc, [c]: [] }),
-    { lockCode: "", fleetsPublic: true, turnNumber: 0, interfaceGlitch: false, globalExperimentalEditing: false,
-      experimentalVotes: [] });
+    { lockCode: "", fleetsPublic: true, turnNumber: 0, globalExperimentalEditing: false });
 
 function deepEqual(a, b) {
   if (a === b) return true;
@@ -575,26 +555,12 @@ export function buildSectorUpdates(prev, next) {
   const turnBefore = p.turnNumber || 0;
   const turnAfter = n.turnNumber || 0;
   if (turnBefore !== turnAfter) updates["turn/number"] = turnAfter;
-  // GM's whole-interface "haunted TV" corruption toggle — same own-node
-  // reasoning as lockCode/fleetsPublic above, and it rides the same access
-  // node since it's another shared on/off flag rather than sector content.
-  const glitchBefore = !!p.interfaceGlitch;
-  const glitchAfter = !!n.interfaceGlitch;
-  if (glitchBefore !== glitchAfter) updates["access/interfaceGlitch"] = glitchAfter;
-  // Global Experimental Editing — same own-node reasoning as interfaceGlitch
+  // Global Experimental Editing — same own-node reasoning as lockCode
   // above. When on, every player sees the Experimental Editing controls and
   // highlight on every article, regardless of that entry's own testEditRoles.
   const globalTestEditBefore = !!p.globalExperimentalEditing;
   const globalTestEditAfter = !!n.globalExperimentalEditing;
   if (globalTestEditBefore !== globalTestEditAfter) updates["access/globalExperimentalEditing"] = globalTestEditAfter;
-  // Experimental Mode's player vote tally — each player's own advisory vote to
-  // end it, by roleId. Same own-node reasoning as the flags above (a vote
-  // shouldn't rewrite sector content), but a list rather than a bool: the GM's
-  // actual switch is endExperimentalMode() in App.jsx, which this only informs
-  // — it never gates it, hence "final discretion" living outside this diff.
-  const votesBefore = [...(p.experimentalVotes || [])].sort().join(",");
-  const votesAfter = [...(n.experimentalVotes || [])].sort().join(",");
-  if (votesBefore !== votesAfter) updates["access/experimentalVotes"] = n.experimentalVotes && n.experimentalVotes.length ? n.experimentalVotes : null;
   return updates;
 }
 

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Globe, GripVertical, ImageOff, Lock, MapPin, Minus, Package, Plus, Send, Swords, Timer, TimerOff, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Globe, GripVertical, Lock, MapPin, Minus, Package, Plus, Send, Swords, Timer, TimerOff, Trash2, Users } from "lucide-react";
 import { T, F, inputStyle } from "../theme.js";
 import { GM_RECIPIENT } from "../constants.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
 import MobileTabRail from "./ui/MobileTabRail.jsx";
-import CorruptedTag from "./ui/CorruptedTag.jsx";
 
 const LEVELS = [
   { id: "low", label: "Low", color: T.accent },
@@ -203,43 +202,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
     const outerStyle = { border: `1px solid ${T.line}`, borderRadius: 2, background: T.panel2, padding: 10,
       display: "flex", flexDirection: "column", gap: 6, opacity: dragging ? 0.4 : 1,
       ...(packed ? { flex: `0 1 ${isMobile ? "100%" : "380px"}`, maxWidth: isMobile ? "100%" : 440 } : {}) };
-    // "Corrupted" haunt (a property of the modifier, not a per-player prank —
-    // toggled right here): the card loses its normal chrome entirely (no
-    // dark panel, no border, no faction color) in favor of a plain white box
-    // with the same real name/description text, just stripped of all styling
-    // — see CorruptedTag. Sizing (packed flex-basis) is kept so the
-    // surrounding grid doesn't reflow. The GM sees this exact same broken
-    // card too, not the normal editable form — nothing here is editable
-    // while corrupted, so the toggle/Remove row below it is the only way
-    // back out, and stays reachable for exactly that reason.
-    if (m.corrupted) {
-      return (
-        <div key={m.id} {...dropTargetProps(list, m.id)}
-          style={{ background: "#fff", padding: 14,
-            ...(packed ? { flex: `0 1 ${isMobile ? "100%" : "380px"}`, maxWidth: isMobile ? "100%" : 440 } : {}) }}>
-          <CorruptedTag variant="block" icon>
-            <div>{m.name || (tracker ? "Untitled tracker" : "Untitled modifier")}</div>
-            <div>{m.text || ""}</div>
-          </CorruptedTag>
-          {canEdit && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-              <button type="button" onClick={() => patchModifier(m.id, { corrupted: false })}
-                title="Corrupted — players (and this list) see this instead of the real name/description. Click to restore."
-                style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
-                  border: `1px solid ${T.danger}`, borderRadius: 2, padding: "5px 9px",
-                  background: `${T.danger}22`, color: T.dangerText,
-                  fontFamily: F.body, fontSize: 10.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-                <ImageOff size={12} /> Corrupted — restore
-              </button>
-              <Btn kind="danger" style={{ alignSelf: "flex-start" }}
-                onClick={async () => { if (await confirm(tracker ? "Remove this tracker?" : "Remove this modifier?")) removeModifier(m.id); }}>
-                <Trash2 size={13} /> Remove
-              </Btn>
-            </div>
-          )}
-        </div>
-      );
-    }
     return (
       <div key={m.id} {...dropTargetProps(list, m.id)} style={outerStyle}>
         <div style={{ display: "flex", alignItems: "stretch", margin: "-10px -10px 0",
@@ -322,16 +284,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
               placeholder="Description…"
               style={{ ...inputStyle, minHeight: packed ? 56 : 70, resize: "vertical", lineHeight: 1.6, fontSize: 12.5, padding: 10 }} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button type="button" onClick={() => patchModifier(m.id, { corrupted: !m.corrupted })}
-                title={m.corrupted
-                  ? "Corrupted — players (and this list) see a broken-asset placeholder instead of the real name/description. Click to restore."
-                  : "Mark corrupted — renders as a broken-asset placeholder wherever this modifier is shown to a player, everywhere it's referenced"}
-                style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
-                  border: `1px solid ${m.corrupted ? T.danger : T.line}`, borderRadius: 2, padding: "5px 9px",
-                  background: m.corrupted ? `${T.danger}22` : T.panel3, color: m.corrupted ? T.dangerText : T.faint,
-                  fontFamily: F.body, fontSize: 10.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-                <ImageOff size={12} /> {m.corrupted ? "Corrupted" : "Mark corrupted"}
-              </button>
               <Btn kind="danger" style={{ alignSelf: "flex-start" }}
                 onClick={async () => { if (await confirm(tracker ? "Remove this tracker?" : "Remove this modifier?")) removeModifier(m.id); }}>
                 <Trash2 size={13} /> Remove

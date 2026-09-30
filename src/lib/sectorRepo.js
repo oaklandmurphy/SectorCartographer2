@@ -93,14 +93,9 @@ function readAccess(data, raw) {
   data.lockCode = (raw.access && typeof raw.access.lockCode === "string") ? raw.access.lockCode : "";
   // Fleet positions are public unless the GM has explicitly switched that off.
   data.fleetsPublic = !(raw.access && raw.access.fleetsPublic === false);
-  // Whole-interface glitch corruption is off unless the GM has switched it on.
-  data.interfaceGlitch = !!(raw.access && raw.access.interfaceGlitch === true);
   // Global Experimental Editing is off unless the GM has switched it on — see
   // sectorSchema.js's buildSectorUpdates for why it rides this same node.
   data.globalExperimentalEditing = !!(raw.access && raw.access.globalExperimentalEditing === true);
-  // Experimental Mode's player vote tally — advisory only, see
-  // sectorSchema.js's buildSectorUpdates. Absent means nobody's voted yet.
-  data.experimentalVotes = Array.isArray(raw.access && raw.access.experimentalVotes) ? raw.access.experimentalVotes : [];
 }
 
 // The GM's turn counter, bumped by nextTurn() in App.jsx and stamped onto

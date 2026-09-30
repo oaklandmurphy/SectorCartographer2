@@ -251,32 +251,13 @@ export default function MapCanvas({
         const isFleetAdjacent = fleetGlow && fleetGlow.adjacent.has(s.id);
         const visMarkers = overview ? [] : s.markers.filter((m) => { const L = layerById(m.layerId); return L && L.visible; });
         const plate = overview ? 14 : 34; const half = plate / 2;
-        // The GM sees the same broken plate/splat a player would — see the
-        // matching comments on the corrupted fleet/agent pieces below. The
-        // GM's own popup (SystemPopup, opened by clicking this piece exactly
-        // as normal) is unaffected by this swap, so the Corrupted checkbox
-        // stays reachable to un-corrupt it.
-        const corrupted = !!s.corrupted;
-        // Other systems' screen positions relative to this one, in the same
-        // pixels w2s already put `p` in — CorruptionSplat clips its shape to
-        // whichever side of each neighbor's perpendicular bisector is closer
-        // to this system, so the whiteout only ever covers ground actually
-        // closer to the corrupted system than to any system this viewer can
-        // see (phantom systems the viewer can't see are already filtered out
-        // of `systems` upstream, so they can't leak through this shape).
-        // Only computed for a corrupted system — rare — everyone else skips it.
-        const neighborOffsets = corrupted
-          ? systems.filter((s2) => s2.id !== s.id).map((s2) => { const p2 = w2s(s2.x, s2.y); return [p2.x - p.x, p2.y - p.y]; })
-          : undefined;
         return (
           <div key={s.id} data-piece="1" className="piece-hover-zone"
             onPointerDown={(e) => startPieceDrag(e, "system", s.id, s.x, s.y)}
             onDoubleClick={(e) => e.stopPropagation()}
             style={{ position: "absolute", left: p.x, top: p.y - half, transform: "translateX(-50%)", touchAction: "none",
               cursor: mode === "draw" ? "crosshair" : "pointer",
-              // Above the CRT scanline overlay (zIndex 31, below) — same
-              // reasoning as the corrupted fleet/agent pieces further down.
-              zIndex: corrupted ? 32 : (isSel || isFleetHome) ? 22 : 12, textAlign: "center" }}>
+              zIndex: (isSel || isFleetHome) ? 22 : 12, textAlign: "center" }}>
             <div className="piece-hover-target" style={{ position: "relative", width: plate, height: plate, margin: "0 auto" }}>
               {isFleetHome && <SystemGlow color={fleetGlow.color} pulse size={overview ? 0.55 : 1} />}
               {isFleetAdjacent && <SystemGlow color={fleetGlow.color} size={overview ? 0.4 : 0.7} />}
@@ -296,8 +277,7 @@ export default function MapCanvas({
                   <Ghost size={9} />
                 </div>
               )}
-              <SystemPlate id={s.id} factionId={fac.id} factionColor={fac.color} overview={overview} corrupted={corrupted}
-                neighbors={neighborOffsets} />
+              <SystemPlate factionId={fac.id} factionColor={fac.color} overview={overview} />
             </div>
             {!overview && <SystemLabel name={s.name} />}
             {!overview && visMarkers.length > 0 && (
@@ -329,23 +309,17 @@ export default function MapCanvas({
         // their own) fleet must not learn carrier/craft counts this way.
         const nCarriers = f.ships.length;
         const tip = isGM ? `${f.name} · ${nCarriers} carrier${nCarriers === 1 ? "" : "s"} · ${craftInFleet(f)} craft` : f.name;
-        // Above the CRT scanline overlay (zIndex 31, below) so a corrupted
-        // piece reads as a genuine broken asset, not just another glitchy
-        // element wearing the same monitor texture as everything else. Shown
-        // to the GM too — FleetView's own toggle (opened via this same
-        // piece's popup) is unaffected, so un-corrupting it stays reachable.
-        const corrupted = f.ships.some((sh) => sh.corrupted);
         return (
           <div key={f.id} data-fleet-id={f.id} data-piece="1" title={tip} className="piece-hover-zone"
             onPointerDown={(e) => startPieceDrag(e, "fleet", f.id, pos.x, pos.y, f.systemId)}
             onDoubleClick={(e) => e.stopPropagation()}
             style={{ position: "absolute", left: p.x, top: p.y, transform: "translate(-50%,-50%)", touchAction: "none",
               cursor: mode === "draw" ? "crosshair" : (canEdit ? "grab" : "pointer"),
-              zIndex: corrupted ? 32 : (isSel || isRouting ? 24 : 18) }}>
+              zIndex: isSel || isRouting ? 24 : 18 }}>
             <div className="piece-hover-target" style={{ position: "relative", width: 30, height: 30,
               transform: isHover ? "scale(1.18)" : undefined, transition: "transform .1s" }}>
               {(isSel || isRouting) && <TargetBrackets color={isRouting ? T.amber : T.accent} inset={-6} armLen={8} thick={2} />}
-              <FleetGlyph factionId={fac.id} factionColor={fac.color} carrierCount={nCarriers} corrupted={corrupted} />
+              <FleetGlyph factionId={fac.id} factionColor={fac.color} carrierCount={nCarriers} />
             </div>
           </div>
         );
@@ -379,19 +353,15 @@ export default function MapCanvas({
         const cap = Number(a.actionCap) || 0;
         const used = (actions || []).filter((x) => x.agentId === a.id).length;
         const remaining = Math.max(0, cap - used);
-        // Above the CRT scanline overlay (zIndex 31, below) — see the
-        // matching fleet piece comment above. Shown to the GM too, same
-        // reasoning: AgentsView's own toggle stays reachable regardless.
-        const corrupted = !!a.corrupted;
         return (
           <div key={a.id} data-piece="1" title={canDrag ? `${tip} · drag to move` : tip} className="piece-hover-zone"
             onPointerDown={(e) => { if (canDrag) startPieceDrag(e, "agent", a.id, pos.x, pos.y, a.systemId); else e.stopPropagation(); }}
             onClick={() => { if (!canDrag) onAgentTap(a.id); }}
             style={{ position: "absolute", left: p.x, top: p.y, transform: "translate(-50%,-50%)", touchAction: "none",
-              cursor: canDrag ? "grab" : "pointer", zIndex: corrupted ? 32 : (isSel || isRouting ? 24 : 17) }}>
+              cursor: canDrag ? "grab" : "pointer", zIndex: isSel || isRouting ? 24 : 17 }}>
             <div className="piece-hover-target" style={{ position: "relative", width: 29, height: 29 }}>
               {(isSel || isRouting) && <TargetBrackets color={isRouting ? T.amber : T.accent} inset={-6} armLen={8} thick={2} />}
-              <AgentGlyph factionColor={fac.color} icon={a.icon} corrupted={corrupted}
+              <AgentGlyph factionColor={fac.color} icon={a.icon}
                 badge={cap > 0 ? `${remaining}/${cap}` : null}
                 badgeTitle={cap > 0 ? `${remaining} of ${cap} action requests available` : undefined} />
             </div>

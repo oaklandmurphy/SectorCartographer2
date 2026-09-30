@@ -54,8 +54,6 @@ export default function UpdatesView({
   resolvedActions, openAction, acknowledgeAction, acknowledgeAllActions,
   resolvedMissions, openMission, acknowledgeMission, acknowledgeAllMissions,
   replenishments, openReplenishment, acknowledgeReplenishment, acknowledgeAllReplenishments,
-  hauntedUpdates, dismissHauntedUpdate,
-  hauntedActions, openHauntedAction, dismissHauntedAction,
 }) {
   // An article notifying a non-revealed viewer while under active Experimental
   // Editing announces itself under its old (pre-edit) title — same rule as the
@@ -65,21 +63,11 @@ export default function UpdatesView({
   const actions = resolvedActions || [];
   const missions = resolvedMissions || [];
   const replen = replenishments || [];
-  const haunts = hauntedUpdates || [];
-  const actionHaunts = hauntedActions || [];
-  // Real unseen resolved actions and haunted fake ones (GM Tools' kind:
-  // "action" — a phantom ruling planted on one of this player's own agents),
-  // interleaved by date so a planted one reads as just another resolution.
   const actionItems = [
     ...actions.map((a) => ({ real: a, when: a.resolvedAt || 0 })),
-    ...actionHaunts.map((h) => ({ haunt: h, when: h.createdAt || 0 })),
   ].sort((a, b) => b.when - a.when);
-  // Real unseen articles and haunted fake ones, interleaved by date so a
-  // planted entry reads as just another new article rather than a separate,
-  // obviously-labeled category.
   const articleItems = [
     ...(articles || []).map((a) => ({ real: a, when: a.updatedAt || a.createdAt || 0 })),
-    ...haunts.map((h) => ({ haunt: h, when: h.createdAt || 0 })),
   ].sort((a, b) => b.when - a.when);
   return (
     <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: isMobile ? 14 : 24 }}>
@@ -102,21 +90,7 @@ export default function UpdatesView({
                 <div style={{ border: `1px dashed ${T.line}`, color: T.faint, padding: "16px", textAlign: "center", fontSize: 12 }}>
                   No unread resolutions.
                 </div>
-              ) : actionItems.map((item) => item.haunt ? (
-                // A "haunted" action (GM Tools' kind: "action") — a phantom
-                // ruling with no real request behind it, permanently on that
-                // agent's card in AgentsView (see phantomActionsFor there).
-                // Both buttons here just dismiss this Updates notification and
-                // jump to the agent, same as a real one would.
-                <UpdateCard key={item.haunt.id} isMobile={isMobile}
-                  icon={<VenetianMask size={18} color={T.accent} style={{ flexShrink: 0 }} />}
-                  title={item.haunt.message || "Action request"}
-                  subtitle={item.haunt.agentName}
-                  when={`Resolved ${dateTime(item.haunt.createdAt)}`}
-                  onAcknowledge={() => dismissHauntedAction(item.haunt.id)}
-                  onOpen={() => { dismissHauntedAction(item.haunt.id); openHauntedAction(item.haunt); }}
-                  openLabel="View" />
-              ) : (
+              ) : actionItems.map((item) => (
                 <UpdateCard key={item.real.id} isMobile={isMobile}
                   icon={<VenetianMask size={18} color={T.accent} style={{ flexShrink: 0 }} />}
                   title={item.real.text || "Action request"}
@@ -181,20 +155,7 @@ export default function UpdatesView({
           <div style={{ border: `1px dashed ${T.line}`, color: T.faint, padding: "28px 16px", textAlign: "center", fontSize: 12 }}>
             Your faction is caught up.
           </div>
-        ) : articleItems.map((item) => item.haunt ? (
-          // A "haunted" update (GM Tools' kind: "update") — indistinguishable
-          // from a real article notification. Neither button here does what it
-          // looks like it does: there's no real page behind it, so both
-          // Acknowledge and Read just make it vanish (dismissHauntedUpdate,
-          // from App.jsx — stamps seenAt so it doesn't come back).
-          <UpdateCard key={item.haunt.id} isMobile={isMobile}
-            icon={<FileText size={18} color={T.accent} style={{ flexShrink: 0 }} />}
-            title={item.haunt.title || "Untitled"}
-            when={`Updated ${dateTime(item.haunt.createdAt)}`}
-            onAcknowledge={() => dismissHauntedUpdate(item.haunt.id)}
-            onOpen={() => dismissHauntedUpdate(item.haunt.id)}
-            openLabel="Read" />
-        ) : (
+        ) : articleItems.map((item) => (
           <UpdateCard key={item.real.id} isMobile={isMobile}
             icon={<FileText size={18} color={T.accent} style={{ flexShrink: 0 }} />}
             title={titleOf(item.real) || "Untitled"}

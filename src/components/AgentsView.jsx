@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { VenetianMask, Plus, Trash2, User, MapPin, ShieldAlert, ClipboardList, Send, Flag, Check, Clock, History, ChevronUp, ChevronDown, ImageOff } from "lucide-react";
+import { VenetianMask, Plus, Trash2, User, MapPin, ShieldAlert, ClipboardList, Send, Flag, Check, Clock, History, ChevronUp, ChevronDown } from "lucide-react";
 import { T, F, inputStyle, selStyle, lbl } from "../theme.js";
 import { AGENT_ICONS, AGENT_ICON_KEYS } from "../constants.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
@@ -8,8 +8,6 @@ import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
 import MobileTabRail from "./ui/MobileTabRail.jsx";
-import CorruptedTag from "./ui/CorruptedTag.jsx";
-import CorruptedArt from "./ui/CorruptedArt.jsx";
 
 // Faction tabs run along the top (the GM, who sees every faction, picks one to
 // work in; a lone-faction player gets no tab strip, there being nothing to pick).
@@ -31,7 +29,6 @@ export default function AgentsView({
   actions, archivedActions, modifiers, submitAction, removeAction,
   loadOlderArchiveTurn, canLoadOlderArchive,
   initialAgentId, // deep-link: open straight to this agent (e.g. "Request Action" from the map/politics view)
-  hauntedActions, // GM Tools "haunt" prank: phantom resolved requests, already scoped to this viewer — see App.jsx's pendingActionHaunts
 }) {
   const confirm = useConfirm();
   const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId || null);
@@ -68,26 +65,12 @@ export default function AgentsView({
     const idx = facAgents.indexOf(a);
     return `Agent ${idx + 1}`;
   };
-  // GM Tools "haunt" prank: a phantom resolved request planted on this agent
-  // that its owning player never actually raised — see App.jsx's
-  // pendingActionHaunts and hauntPane's "action" kind in GMToolsView. Shaped
-  // to match a real action closely enough that it renders through the same
-  // requestCard/ActionResolution as one, and it does count against the
-  // agent's quota (actionStats below), same as a real resolved request would
-  // — that's the point: the cap ticks down for something they never did.
-  const phantomActionsFor = (agentId) => (hauntedActions || [])
-    .filter((h) => h.agentId === agentId)
-    .map((h) => ({
-      id: h.id, agentId, factionId: activeId, text: h.message, status: "resolved",
-      modifierIds: [], resolution: h.resolution, createdAt: h.createdAt, resolvedAt: h.createdAt,
-    }));
-
   const pendingCount = (a) => (actions || []).filter((x) => x.agentId === a.id && x.status !== "resolved").length;
   // Remaining vs. the GM-set quota — same figure the map's per-agent badge
   // shows, kept in sync here rather than recomputed differently in two places.
   const actionStats = (a) => {
     const cap = Number(a.actionCap) || 0;
-    const used = (actions || []).filter((x) => x.agentId === a.id).length + phantomActionsFor(a.id).length;
+    const used = (actions || []).filter((x) => x.agentId === a.id).length;
     return { cap, used, remaining: Math.max(0, cap - used) };
   };
 
@@ -149,9 +132,7 @@ export default function AgentsView({
               border: `1px solid ${on ? activeFaction.color : T.line}`, borderRadius: 2, padding: "9px 10px",
               background: on ? `${activeFaction.color}22` : T.panel2, color: on ? activeFaction.color : T.text,
               flex: vertical ? "none" : "0 0 auto", textAlign: "left", minWidth: vertical ? 0 : 150 }}>
-            {a.corrupted
-              ? <CorruptedArt width={15} title="Agent glyph unavailable" />
-              : <Icon size={15} style={{ color: on ? activeFaction.color : T.mut, flexShrink: 0 }} />}
+            <Icon size={15} style={{ color: on ? activeFaction.color : T.mut, flexShrink: 0 }} />
             <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis",
               fontFamily: F.body, fontSize: 13, fontWeight: 600, letterSpacing: ".03em",
               textTransform: "uppercase" }}>{agentLabel(a)}</span>
@@ -235,66 +216,6 @@ export default function AgentsView({
     const member = activeFaction.members.find((m) => m.id === a.memberId) || null;
     const HeaderIcon = AGENT_ICONS[a.icon] || VenetianMask;
 
-    // Corrupted: the whole identity card loses this app's styling, not just
-    // the icon — see CorruptedTag's block variant (also used for a corrupted
-    // modifier's card in AssetsView). Real field values still show, just as
-    // plain unstyled text; the icon has no text to fall back to, so it's the
-    // broken-image square instead. The GM sees this exact same broken card
-    // too (not the normal editable form) — nothing here is editable while
-    // corrupted, so the toggle/Remove row right below it is the only way
-    // back out, and stays reachable for exactly that reason. Action Requests
-    // further down is left alone either way — that's live gameplay data,
-    // not the "asset" being corrupted.
-    if (a.corrupted) {
-      return (
-        <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto",
-          display: "flex", flexDirection: "column" }}>
-          <div style={{ background: "#fff", padding: isMobile ? 14 : 18 }}>
-            <CorruptedTag variant="block">
-              <CorruptedArt width={26} title="Agent glyph unavailable" />
-              <div>{agentLabel(a)}</div>
-              <div>{member ? member.name : "—"}</div>
-              <div>{a.systemId ? systemName(a.systemId) : "Unplaced"}</div>
-              <div>{a.notes || ""}</div>
-            </CorruptedTag>
-          </div>
-          {canEdit && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: isMobile ? "10px 14px" : "10px 18px" }}>
-              <button type="button" onClick={() => patchAgent(a.id, { corrupted: false })}
-                title="Corrupted — this is what players see instead of the real icon and details. Click to restore."
-                style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
-                  border: `1px solid ${T.danger}`, borderRadius: 2, padding: "6px 10px",
-                  background: `${T.danger}22`, color: T.dangerText,
-                  fontFamily: F.body, fontSize: 10.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-                <ImageOff size={12} /> Corrupted — restore
-              </button>
-              <Btn kind="danger" title="Remove this agent"
-                onClick={async () => {
-                  if (await confirm(`Remove ${agentLabel(a)}?`)) { removeAgent(a.id); setSelectedAgentId(null); }
-                }}>
-                <Trash2 size={13} /> Remove
-              </Btn>
-            </div>
-          )}
-          <div style={{ padding: isMobile ? "0 14px 14px" : "0 18px 18px" }}>
-            <AgentActions
-              key={a.id}
-              agent={a} color={activeFaction.color} isMobile={isMobile}
-              actions={[
-                ...(actions || []).filter((x) => x.agentId === a.id),
-                ...phantomActionsFor(a.id),
-              ]}
-              archivedActions={(archivedActions || []).filter((x) => x.agentId === a.id)}
-              loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
-              facModifiers={facModifiers} cap={Number(a.actionCap) || 0}
-              canManage={canManage} canEdit={canEdit}
-              submitAction={submitAction} removeAction={removeAction} patchAgent={patchAgent}
-              startOpen={!!(initialAgentId && a.id === initialAgentId)} />
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto",
         display: "flex", flexDirection: "column" }}>
@@ -306,16 +227,6 @@ export default function AgentsView({
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agentLabel(a)}</span>
           {canEdit && (
             <>
-              <button type="button" onClick={() => patchAgent(a.id, { corrupted: !a.corrupted })}
-                title={a.corrupted
-                  ? "Corrupted — players (and this list) see a broken-image glyph instead of the real icon. Click to restore."
-                  : "Mark corrupted — this agent's icon renders as a broken-image glyph wherever it's shown to a player"}
-                style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
-                  border: `1px solid ${a.corrupted ? T.danger : T.line}`, borderRadius: 2, padding: "6px 10px",
-                  background: a.corrupted ? `${T.danger}22` : T.panel3, color: a.corrupted ? T.dangerText : T.faint,
-                  fontFamily: F.body, fontSize: 10.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-                <ImageOff size={12} /> {a.corrupted ? "Corrupted" : "Mark corrupted"}
-              </button>
               <Btn kind="danger" title="Remove this agent"
                 onClick={async () => {
                   if (await confirm(`Remove ${agentLabel(a)}?`)) { removeAgent(a.id); setSelectedAgentId(null); }
@@ -406,7 +317,6 @@ export default function AgentsView({
             agent={a} color={activeFaction.color} isMobile={isMobile}
             actions={[
               ...(actions || []).filter((x) => x.agentId === a.id),
-              ...phantomActionsFor(a.id),
             ]}
             archivedActions={(archivedActions || []).filter((x) => x.agentId === a.id)}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
@@ -554,7 +464,6 @@ function AgentActions({ agent, color, isMobile, actions, archivedActions, loadOl
             {rq.modifierIds.map((id) => {
               const m = modObj(id);
               if (!m || !m.name) return null;
-              if (m.corrupted) return <CorruptedTag key={id} icon>{m.name}</CorruptedTag>;
               return (
                 <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 3,
                   border: `1px solid ${color}`, borderRadius: 2, padding: "1px 5px",
@@ -645,18 +554,6 @@ function AgentActions({ agent, color, isMobile, actions, archivedActions, loadOl
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                 {facModifiers.map((m) => {
                   const on = picked.includes(m.id);
-                  if (m.corrupted) {
-                    // Still flaggable — a corrupted modifier's checkbox keeps working
-                    // (togglePick doesn't care how the label rendered) — just shows up
-                    // plain/unstyled like the rest of a corrupted modifier's text.
-                    return (
-                      <button key={m.id} onClick={() => togglePick(m.id)}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer",
-                          background: "none", border: on ? `1px solid ${color}` : "none", borderRadius: 2, padding: on ? 2 : 0 }}>
-                        {on && <Check size={10} color={color} />}<CorruptedTag icon>{m.name || "Unnamed modifier"}</CorruptedTag>
-                      </button>
-                    );
-                  }
                   return (
                     <button key={m.id} onClick={() => togglePick(m.id)}
                       style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer",

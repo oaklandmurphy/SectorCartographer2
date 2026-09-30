@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Ship, Anchor, Plus, X, Columns2, StickyNote, Rocket, Clock, Check, SplitSquareHorizontal,
-  History, ChevronDown, ChevronUp, Route, ImageOff } from "lucide-react";
+  History, ChevronDown, ChevronUp, Route } from "lucide-react";
 import { T, F, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { squadronsOf, craftInCarrier, craftInFleet, knownModels, knownCarrierModels,
   incomingFor, incomingForShip } from "../lib/carriers.js";
@@ -11,7 +11,6 @@ import ShipArt from "./ui/ShipArt.jsx";
 import ArtLibrary from "./ArtLibrary.jsx";
 import SquadronOrderModal from "./SquadronOrderModal.jsx";
 import MissionResolution from "./ui/MissionResolution.jsx";
-import CorruptedArt from "./ui/CorruptedArt.jsx";
 
 // The Fleet / Compare selectors up top. A native <select> can't color a row to
 // its faction or stack a second line of detail, so this is a small custom
@@ -224,17 +223,8 @@ export default function FleetView({
       <div style={{ width: HULL_COL, flexShrink: 0, display: "flex", gap: 6 }}>
         <div style={{ width: 4, background: facColor, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {/* the hull, big enough to actually look at — or, corrupted, a plain
-              broken-image square standing in for it (see CorruptedArt). Shown
-              to the GM too, not just players — the name/model inputs and the
-              toggle right below stay live either way, so un-corrupting it is
-              never blocked by this swap. */}
-          {sh.corrupted ? (
-            <CorruptedArt width={ART_W} height={ART_H} title="Ship art unavailable" />
-          ) : (
-            <ShipArt art={art} model={sh.model} size={ART_W} height={ART_H} plate
-              placeholder={showSlots} title={sh.model || undefined} color={facColor} />
-          )}
+          <ShipArt art={art} model={sh.model} size={ART_W} height={ART_H} plate
+            placeholder={showSlots} title={sh.model || undefined} color={facColor} />
           <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
             {canEdit ? (
               <input value={sh.name} onChange={(e) => patchShip(fleet.id, sh.id, { name: e.target.value })}
@@ -245,16 +235,6 @@ export default function FleetView({
                 whiteSpace: "nowrap" }}>
                 {sh.name}
               </div>
-            )}
-            {canEdit && (
-              <button onClick={() => patchShip(fleet.id, sh.id, { corrupted: !sh.corrupted })}
-                title={sh.corrupted
-                  ? "Corrupted — players see a broken-image square instead of the hull art. Click to restore."
-                  : "Mark corrupted — this carrier's hull art renders as a broken-image square for players"}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 2, flexShrink: 0,
-                  color: sh.corrupted ? T.danger : T.faint, display: "flex" }}>
-                <ImageOff size={13} />
-              </button>
             )}
             {canEdit && (
               <button onClick={() => removeShip(fleet.id, sh.id)} title="Remove carrier"

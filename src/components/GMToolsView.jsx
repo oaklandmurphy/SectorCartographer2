@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Gavel, Copy, Trash2, Dices, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6,
   ClipboardList, VenetianMask, Flag, Check, Clock, RotateCcw, Wand2, Users, Rocket, SkipForward,
   Pencil, X, MapPin, History, Star, Sparkles, ArrowLeftRight, ArrowRight, PackagePlus, Route, ListChecks,
-  Newspaper, Ghost, Send, RefreshCw, Tv, Eye } from "lucide-react";
+  Newspaper, Send, RefreshCw } from "lucide-react";
 import { T, F, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import { readDraft, writeDraft } from "../hooks/useDraft.js";
@@ -22,16 +22,6 @@ import TurnMovementWarningModal from "./TurnMovementWarningModal.jsx";
 const sign = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const rollDie = () => 1 + Math.floor(Math.random() * 6);
 const DIE_FACES = { 1: Dice1, 2: Dice2, 3: Dice3, 4: Dice4, 5: Dice5, 6: Dice6 };
-
-// "Haunted message" presets — see components/ui/HauntedOverlay.jsx for what
-// each actually renders as. `code` generates a plausible-looking default
-// reference/error code the GM can edit or leave as-is.
-const randomHex = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-const HAUNT_STYLES = {
-  http500: { label: "500 — Server Error", code: () => `Reference #${randomHex(8)}` },
-  chrome: { label: "Connection Reset (browser)", code: () => "ERR_CONNECTION_RESET" },
-  glitch: { label: "System Glitch", code: () => `0x${randomHex(8).toUpperCase()}` },
-};
 
 // One selectable move for a fleet in the Suggested Moves review — a radio-style
 // row the GM clicks to pick the owner's own order or an ally/vassal's suggestion.
@@ -117,9 +107,7 @@ function buildNarrativePrompt(turn, items) {
 // A modifier's point value is situational (the same modifier might swing +1 one
 // week and +2 the next), so it's typed in at the moment of use, not stored.
 export default function GMToolsView({ roles, factions, modifiers, notes, isMobile, addNote, removeNote,
-  haunts, addHaunt, removeHaunt, wiki, interfaceGlitch, toggleInterfaceGlitch,
-  previewGlitch, togglePreviewGlitch,
-  globalExperimentalEditing, toggleGlobalExperimentalEditing,
+  wiki, globalExperimentalEditing, toggleGlobalExperimentalEditing, endExperimentalMode,
   actions, archivedActions, agents, systems, links, resolveAction, reopenAction, removeAction, removeArchivedAction,
   loadOlderArchiveTurn, canLoadOlderArchive,
   editActionResolution, editArchivedActionResolution, setActionImportant, setArchivedActionImportant,
@@ -395,136 +383,6 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
     return { faction: fac, label, systemLabel };
   };
   const modName = (id) => (modifiers.find((m) => m.id === id) || {}).name || "";
-
-  /* ------------------------------------------------ haunted message tool
-     A GM prank: pick one or more player roles, write a cryptic line, and their
-     tab shows a full-screen fake error (HauntedOverlay, driven from App.jsx)
-     until they click through it or refresh. One haunt record per target role
-     (addHaunt is called once per selection) rather than a single broadcast
-     record, so each target's dismissal is independent — see App.jsx's
-     pendingHaunt for why a shared seenAt would only let the first viewer see it. */
-  const [hauntTargets, setHauntTargets] = useState([]); // role ids selected
-  const [hauntKind, setHauntKind] = useState("error"); // "error" | "wiki" | "update" | "action"
-  const [hauntStyle, setHauntStyle] = useState("http500");
-  const [hauntWikiId, setHauntWikiId] = useState("");
-  const [hauntTitle, setHauntTitle] = useState("");
-  const [hauntCode, setHauntCode] = useState(() => HAUNT_STYLES.http500.code());
-  const [hauntMessage, setHauntMessage] = useState(""); // also doubles as the fake order text for an "action" haunt
-  const publishedWiki = useMemo(() => (wiki || []).filter((e) => e.status !== "pending"), [wiki]);
-
-  // "action" haunt builder — a fake resolved request planted on one of the
-  // target's own agents, ruled the same way a real request is (outcome, roll,
-  // modifiers, ruling text). Only makes sense against one role/faction at a
-  // time (an agent belongs to exactly one faction), so target selection below
-  // acts as a radio, not a checklist, whenever this kind is active.
-  const [hauntActionAgentId, setHauntActionAgentId] = useState("");
-  const [hauntOutcome, setHauntOutcome] = useState("success");
-  const [hauntActionModIds, setHauntActionModIds] = useState([]);
-  const [hauntActionModValues, setHauntActionModValues] = useState({});
-  const [hauntActionRoll, setHauntActionRoll] = useState("");
-  const [hauntActionDice, setHauntActionDice] = useState(null); // { d1, d2 } | null
-  const [hauntActionRulingText, setHauntActionRulingText] = useState("");
-  const hauntActionRole = hauntKind === "action" ? roles.find((r) => r.id === hauntTargets[0]) : null;
-  const hauntActionFaction = hauntActionRole ? factions.find((f) => f.id === hauntActionRole.factionId) : null;
-  const hauntActionAgents = useMemo(
-    () => (hauntActionFaction ? (agents || []).filter((a) => a.factionId === hauntActionFaction.id) : []),
-    [agents, hauntActionFaction],
-  );
-  const hauntActionFacMods = useMemo(
-    () => (hauntActionFaction ? modifiers.filter((m) => m.factionId === hauntActionFaction.id) : []),
-    [modifiers, hauntActionFaction],
-  );
-  const hauntAgentLabel = (a) => {
-    if (a.name && a.name.trim()) return a.name.trim();
-    const member = hauntActionFaction && hauntActionFaction.members.find((m) => m.id === a.memberId);
-    if (member) return member.name;
-    return `Agent ${hauntActionAgents.indexOf(a) + 1}`;
-  };
-  // The picked agent no longer belongs to the picked faction (target role
-  // changed, or the GM removed it) — drop the stale selection.
-  useEffect(() => {
-    if (hauntActionAgentId && !hauntActionAgents.some((a) => a.id === hauntActionAgentId)) setHauntActionAgentId("");
-  }, [hauntActionAgents, hauntActionAgentId]);
-  function toggleHauntActionMod(id) {
-    setHauntActionModIds((ids) => {
-      if (ids.includes(id)) {
-        setHauntActionModValues((vs) => { const { [id]: _drop, ...rest } = vs; return rest; });
-        return ids.filter((x) => x !== id);
-      }
-      setHauntActionModValues((vs) => ({ ...vs, [id]: vs[id] ?? "1" }));
-      return [...ids, id];
-    });
-  }
-  function rollHauntActionD6() {
-    const d1 = rollDie(), d2 = rollDie();
-    setHauntActionDice({ d1, d2 });
-    setHauntActionRoll(String(d1 + d2));
-  }
-
-  function toggleHauntTarget(roleId) {
-    // An "action" haunt targets exactly one role (its agent picker is
-    // faction-scoped), so picking a second one here replaces the first.
-    if (hauntKind === "action") { setHauntTargets((ids) => (ids[0] === roleId ? [] : [roleId])); return; }
-    setHauntTargets((ids) => (ids.includes(roleId) ? ids.filter((id) => id !== roleId) : [...ids, roleId]));
-  }
-  function changeHauntKind(kind) {
-    setHauntKind(kind);
-    if (kind === "action" && hauntTargets.length > 1) setHauntTargets((ids) => ids.slice(0, 1));
-  }
-  function changeHauntStyle(style) {
-    setHauntStyle(style);
-    setHauntCode(HAUNT_STYLES[style].code());
-  }
-  function sendHaunt() {
-    const msg = hauntMessage.trim();
-    const ttl = hauntTitle.trim();
-    if (hauntTargets.length === 0) return;
-    if (hauntKind === "wiki" && !hauntWikiId) return;
-    if (hauntKind === "action" && !hauntActionAgentId) return;
-    // An "update" haunt has nothing but a title (see UpdatesView — clicking it
-    // just makes it vanish); every other kind needs the message instead
-    // ("action" repurposes it as the fake order text on the phantom request).
-    if (hauntKind === "update" ? !ttl : !msg) return;
-
-    const isAutoOutcome = hauntOutcome === "autoSuccess" || hauntOutcome === "autoFailure";
-    const selMods = hauntActionFacMods.filter((m) => hauntActionModIds.includes(m.id));
-    const sumMods = selMods.reduce((s, m) => s + (Number(hauntActionModValues[m.id]) || 0), 0);
-    const hauntResolution = hauntKind === "action" ? {
-      outcome: hauntOutcome,
-      roll: isAutoOutcome ? null : (Number(hauntActionRoll) || 0),
-      dice: !isAutoOutcome && hauntActionDice ? hauntActionDice : null,
-      mods: selMods.map((m) => ({ name: m.name || "Unnamed modifier", value: Number(hauntActionModValues[m.id]) || 0 })),
-      situational: 0,
-      total: sumMods,
-      text: hauntActionRulingText.trim(),
-    } : null;
-
-    hauntTargets.forEach((roleId) => addHaunt({
-      roleId, kind: hauntKind, style: hauntStyle, title: hauntTitle, code: hauntCode, message: msg,
-      wikiId: hauntKind === "wiki" ? hauntWikiId : "",
-      agentId: hauntKind === "action" ? hauntActionAgentId : "",
-      resolution: hauntResolution,
-    }));
-    setHauntTargets([]); setHauntTitle(""); setHauntMessage(""); setHauntCode(HAUNT_STYLES[hauntStyle].code());
-    setHauntActionAgentId(""); setHauntActionModIds([]); setHauntActionModValues({});
-    setHauntActionRoll(""); setHauntActionDice(null); setHauntActionRulingText(""); setHauntOutcome("success");
-  }
-  const sortedHaunts = useMemo(
-    () => [...(haunts || [])].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
-    [haunts],
-  );
-  const hauntKindLabel = (h) => (h.kind === "wiki" ? "Haunted Article" : h.kind === "update" ? "Haunted Update"
-    : h.kind === "action" ? "Haunted Action" : (HAUNT_STYLES[h.style] || {}).label || h.style);
-  const hauntAgentNameFor = (agentId) => {
-    const a = (agents || []).find((x) => x.id === agentId);
-    if (!a) return "removed agent";
-    if (a.name && a.name.trim()) return a.name.trim();
-    const fac = factions.find((f) => f.id === a.factionId);
-    const member = fac && fac.members.find((m) => m.id === a.memberId);
-    if (member) return member.name;
-    const list = (agents || []).filter((x) => x.factionId === a.factionId);
-    return `Agent ${list.indexOf(a) + 1}`;
-  };
 
   /* ------------------------------------------------ narrative prompt tool */
   // `nextTurn` archives a closed-out turn's resolved actions stamped with the
@@ -1251,340 +1109,46 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
     );
   };
 
-  // The haunted-message pane: a target picker, style + text fields, a send
-  // button, and the sent history (target, preview, delivered/pending, delete).
-  const hauntPane = () => {
-    const roleName = (id) => (roles.find((r) => r.id === id) || {}).name || "Unknown player";
-    return (
-      <div>
-        {/* Whole-interface "haunted TV" corruption — unlike everything else in
-            this pane, this one is global and ambient rather than aimed at a
-            player and dismissible: flip it on and every viewer's whole app
-            (including this GM's own) starts subtly flickering/shearing until
-            it's flipped back off. See index.css .interface-glitch-* and
-            App.jsx's interfaceGlitch. */}
-        <div style={{ background: T.panel, border: `1px solid ${interfaceGlitch ? T.danger : T.line}`, ...cut(10),
-          padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text,
-            display: "flex", alignItems: "center", gap: 7 }}>
-            <Tv size={15} color={T.accent} /> SIGNAL CORRUPTION
-          </div>
-          <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
-            Ambient, global, non-blocking — the whole app for every viewer (players and this GM view alike) starts
-            subtly flickering, shearing sideways and rolling like a dying TV signal. Stays on until switched off here;
-            nobody can dismiss it themselves. Good for a slow-building endgame rather than a one-off scare.
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => toggleInterfaceGlitch(!interfaceGlitch)}
-              title={interfaceGlitch ? "Corruption is live for every viewer — click to restore a clean signal" : "Corrupt the signal for every viewer"}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", alignSelf: "flex-start",
-                border: `1px solid ${interfaceGlitch ? T.danger : T.line}`, borderRadius: 2, padding: "6px 10px",
-                background: interfaceGlitch ? `${T.danger}22` : T.panel3, color: interfaceGlitch ? T.dangerText : T.faint,
-                fontFamily: F.body, fontSize: 11.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
-              <Tv size={12} /> {interfaceGlitch ? "Corruption live — restore signal" : "Corrupt the signal"}
-            </button>
-            {/* Same visual effect, but never written to the shared sector — see
-                App.jsx's previewGlitch/togglePreviewGlitch/effectiveGlitch. Lets
-                the GM see exactly what players would get (and preview the
-                Experimental Mode tab it also reveals — see App.jsx's navTabs)
-                without actually exposing either to them. Redundant, so disabled,
-                once the real switch above is already live for everyone. */}
-            <button type="button" onClick={() => togglePreviewGlitch(!previewGlitch)} disabled={interfaceGlitch}
-              title={interfaceGlitch ? "Already live for every viewer — nothing left to preview"
-                : previewGlitch ? "Previewing on your screen only — click to stop" : "Preview the corrupted signal on your screen only; players see nothing"}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: interfaceGlitch ? "not-allowed" : "pointer",
-                alignSelf: "flex-start", border: `1px solid ${previewGlitch ? T.accent : T.line}`, borderRadius: 2, padding: "6px 10px",
-                background: previewGlitch ? "rgba(159,194,58,.14)" : T.panel3, color: previewGlitch ? T.accent : T.faint,
-                opacity: interfaceGlitch ? .45 : 1,
-                fontFamily: F.body, fontSize: 11.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
-              <Eye size={12} /> {previewGlitch ? "Previewing — stop" : "Preview for me only"}
-            </button>
-          </div>
-        </div>
-
-        {/* Global Experimental Editing — same idea as signal corruption above:
-            global, ambient, and not something any player can dismiss. Flip it
-            on and every player gets the Experimental Editing button on every
-            article they can propose an edit to, and can see the highlighted
-            (green/red) change on every article published that way — regardless
-            of that entry's own "Experimental Editing revealed to" role list.
-            See App.jsx's globalExperimentalEditing and WikiView.jsx's uses of it. */}
-        <div style={{ background: T.panel, border: `1px solid ${globalExperimentalEditing ? T.accent : T.line}`, ...cut(10),
-          padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text,
-            display: "flex", alignItems: "center", gap: 7 }}>
-            <Wand2 size={15} color={T.accent} /> EXPERIMENTAL EDITING — GLOBAL ACCESS
-          </div>
-          <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
-            Gives every player Experimental Editing on every codex article, overriding each entry's own
-            "Experimental Editing revealed to" list: they see the button when proposing a change, and see the
-            highlighted (green/red) change on any article published that way. Switching this off returns each
-            article to its own per-entry, per-player reveal list.
-          </div>
-          <button type="button" onClick={() => toggleGlobalExperimentalEditing(!globalExperimentalEditing)}
-            title={globalExperimentalEditing ? "On for every player — click to go back to per-article reveals" : "Turn on Experimental Editing for every player, on every article"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", alignSelf: "flex-start",
-              border: `1px solid ${globalExperimentalEditing ? T.accent : T.line}`, borderRadius: 2, padding: "6px 10px",
-              background: globalExperimentalEditing ? "rgba(159,194,58,.14)" : T.panel3, color: globalExperimentalEditing ? T.accent : T.faint,
-              fontFamily: F.body, fontSize: 11.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
-            <Wand2 size={12} /> {globalExperimentalEditing ? "On for everyone — restore per-article reveals" : "Turn on for everyone"}
-          </button>
-        </div>
-
+  // Experimental Editing: the GM's global switch (every player gets the button
+  // on every article) and the kill switch that swaps each experimentally-edited
+  // article back to its original text.
+  const experimentalPane = () => (
+    <div>
+      <div style={{ background: T.panel, border: `1px solid ${globalExperimentalEditing ? T.accent : T.line}`, ...cut(10),
+        padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
         <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text,
-          display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-          <Ghost size={15} color={T.accent} /> HAUNTED MESSAGE
+          display: "flex", alignItems: "center", gap: 7 }}>
+          <Wand2 size={15} color={T.accent} /> EXPERIMENTAL EDITING: GLOBAL ACCESS
         </div>
-
-        <div style={{ background: T.panel, border: `1px solid ${T.line}`, ...cut(10),
-          padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
-            {hauntKind === "wiki"
-              ? "Swaps a real codex article's title and body for something else, only for the players you pick — the rest of the app looks completely normal. Clicking it reveals the real article again."
-              : hauntKind === "update"
-                ? "Plants a fake entry in the players' Updates feed, indistinguishable from a real one. There's nothing behind it — clicking it (Read or Acknowledge) just makes it vanish."
-                : hauntKind === "action"
-                  ? "Plants a fake resolved request on one of the target's own agents — full outcome, roll, modifiers and ruling, rendered exactly like a real one, and pinged through their Updates feed the same as a real resolution would be. It counts against that agent's action quota, and the player can't remove it themselves — only deleting it here (below) does."
-                  : "Shows a fake error screen over the whole app for the players you pick — it looks like the site broke, not like an in-game message. Stays up until they click anywhere or refresh the page."}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={lbl}>Kind</span>
-            <select value={hauntKind} onChange={(e) => changeHauntKind(e.target.value)} style={selStyle}>
-              <option value="error">Fake error screen</option>
-              <option value="wiki">Haunted codex article</option>
-              <option value="update">Haunted update (fake notification)</option>
-              <option value="action">Haunted action (fake resolved request)</option>
-            </select>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={lbl}>{hauntKind === "action" ? "Send to (one player — its agent belongs to one faction)" : "Send to"}</span>
-            {roles.length === 0 && (
-              <div style={{ fontSize: 10.5, color: T.faint }}>No player roles yet — add one from the access panel.</div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {roles.map((r) => {
-                const on = hauntTargets.includes(r.id);
-                return (
-                  <label key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
-                    border: `1px solid ${on ? T.accent : T.line}`, borderRadius: 2, padding: "6px 9px",
-                    background: on ? "rgba(159,194,58,.12)" : T.panel2 }}>
-                    <input type={hauntKind === "action" ? "radio" : "checkbox"} checked={on} onChange={() => toggleHauntTarget(r.id)} />
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.color || T.accent, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12.5, color: on ? T.accent : T.text }}>{r.name || "Unnamed player"}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {hauntKind === "error" && (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={lbl}>Style</span>
-                <select value={hauntStyle} onChange={(e) => changeHauntStyle(e.target.value)} style={selStyle}>
-                  {Object.entries(HAUNT_STYLES).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
-                </select>
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 220px" }}>
-                  <span style={lbl}>Headline (optional)</span>
-                  <input value={hauntTitle} onChange={(e) => setHauntTitle(e.target.value)}
-                    placeholder="Default headline for this style" style={inputStyle} />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 180px" }}>
-                  <span style={lbl}>Error code</span>
-                  <div style={{ display: "flex", gap: 5 }}>
-                    <input className="mono" value={hauntCode} onChange={(e) => setHauntCode(e.target.value)}
-                      style={{ ...inputStyle, flex: 1 }} />
-                    <button type="button" title="Randomize" onClick={() => setHauntCode(HAUNT_STYLES[hauntStyle].code())}
-                      style={{ background: T.panel2, border: `1px solid ${T.line}`, color: T.mut, cursor: "pointer", padding: "0 8px" }}>
-                      <RefreshCw size={13} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {hauntKind === "wiki" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={lbl}>Article to haunt</span>
-              <select value={hauntWikiId} onChange={(e) => setHauntWikiId(e.target.value)} style={selStyle}>
-                <option value="">— choose an article —</option>
-                {publishedWiki.map((e) => <option key={e.id} value={e.id}>{e.title || "Untitled"}</option>)}
-              </select>
-              {publishedWiki.length === 0 && (
-                <div style={{ fontSize: 10.5, color: T.faint }}>No codex entries yet.</div>
-              )}
-              <span style={{ ...lbl, marginTop: 6 }}>Fake title (optional — defaults to the real title)</span>
-              <input value={hauntTitle} onChange={(e) => setHauntTitle(e.target.value)}
-                placeholder="Leave blank to keep the real title" style={inputStyle} />
-            </div>
-          )}
-
-          {hauntKind === "update" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={lbl}>Headline</span>
-              <input value={hauntTitle} onChange={(e) => setHauntTitle(e.target.value)}
-                placeholder="What the fake update is called — the only thing they'll ever see" style={inputStyle} />
-            </div>
-          )}
-
-          {hauntKind === "action" && (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={lbl}>Agent</span>
-                {!hauntActionFaction ? (
-                  <div style={{ fontSize: 10.5, color: T.faint }}>Pick a player above first.</div>
-                ) : hauntActionAgents.length === 0 ? (
-                  <div style={{ fontSize: 10.5, color: T.faint }}>{hauntActionFaction.name || "That faction"} has no agents yet.</div>
-                ) : (
-                  <select value={hauntActionAgentId} onChange={(e) => setHauntActionAgentId(e.target.value)} style={selStyle}>
-                    <option value="">— choose an agent —</option>
-                    {hauntActionAgents.map((a) => <option key={a.id} value={a.id}>{hauntAgentLabel(a)}</option>)}
-                  </select>
-                )}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={lbl}>Outcome</span>
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  {OUTCOMES.map((o) => (
-                    <Btn key={o.id} kind={hauntOutcome === o.id ? o.kind : "ghost"} onClick={() => setHauntOutcome(o.id)}>
-                      {o.label}
-                    </Btn>
-                  ))}
-                </div>
-              </div>
-
-              {hauntOutcome !== "autoSuccess" && hauntOutcome !== "autoFailure" && (
-                <>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={lbl}>Roll</span>
-                      <div style={{ display: "flex", gap: 5 }}>
-                        <input className="mono" value={hauntActionRoll} onChange={(e) => { setHauntActionRoll(e.target.value); setHauntActionDice(null); }}
-                          style={{ ...inputStyle, width: 64 }} />
-                        <button type="button" title="Roll 2d6" onClick={rollHauntActionD6}
-                          style={{ background: T.panel2, border: `1px solid ${T.line}`, color: T.mut, cursor: "pointer", padding: "0 8px" }}>
-                          <Dices size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {hauntActionFacMods.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={lbl}>Modifiers to show as applied</span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {hauntActionFacMods.map((m) => {
-                          const on = hauntActionModIds.includes(m.id);
-                          return (
-                            <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
-                              border: `1px solid ${on ? T.accent : T.line}`, borderRadius: 2, padding: "3px 7px",
-                              background: on ? "rgba(159,194,58,.12)" : T.panel2, fontSize: 11 }}>
-                              <input type="checkbox" checked={on} onChange={() => toggleHauntActionMod(m.id)} />
-                              {m.name || "Unnamed modifier"}
-                              {on && (
-                                <input type="number" value={hauntActionModValues[m.id] ?? "1"}
-                                  onChange={(e) => setHauntActionModValues((vs) => ({ ...vs, [m.id]: e.target.value }))}
-                                  className="mono" style={{ ...inputStyle, width: 40, padding: "1px 4px" }} />
-                              )}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={lbl}>Ruling text (optional)</span>
-                <AutoTextarea value={hauntActionRulingText} onChange={(e) => setHauntActionRulingText(e.target.value)}
-                  placeholder="The GM's free-text ruling on the fake outcome…"
-                  style={{ ...inputStyle, minHeight: 50, resize: "vertical", lineHeight: 1.6, fontSize: 12.5, padding: 9 }} />
-              </div>
-            </>
-          )}
-
-          {/* Nothing behind an "update" haunt but a title — see UpdatesView's
-              merged article list, where clicking it just makes it vanish — so
-              there's no body text to write for that kind. */}
-          {hauntKind !== "update" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={lbl}>{hauntKind === "action" ? "Fake order text" : "Cryptic message"}</span>
-              <AutoTextarea value={hauntMessage} onChange={(e) => setHauntMessage(e.target.value)}
-                placeholder={hauntKind === "wiki" ? "The fake body text that replaces the real article…"
-                  : hauntKind === "action" ? "What the agent supposedly attempted — the request text itself…"
-                    : "The line that shows up as the error detail…"}
-                style={{ ...inputStyle, minHeight: 70, resize: "vertical", lineHeight: 1.6, fontSize: 12.5, padding: 9,
-                  fontFamily: F.mono }} />
-            </div>
-          )}
-
-          <Btn kind="primary" onClick={sendHaunt}
-            disabled={hauntTargets.length === 0 || (hauntKind === "wiki" && !hauntWikiId)
-              || (hauntKind === "action" && !hauntActionAgentId)
-              || (hauntKind === "update" ? !hauntTitle.trim() : !hauntMessage.trim())}
-            style={{ alignSelf: "flex-start" }}>
-            <Send size={13} /> Send {hauntTargets.length > 1 ? `to ${hauntTargets.length} players` : ""}
-          </Btn>
+        <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
+          Gives every player Experimental Editing on every codex article, overriding each entry's own
+          "Experimental Editing revealed to" list: they see the button when proposing a change, and see the
+          highlighted (green/red) change on any article published that way. Switching this off returns each
+          article to its own per-entry, per-player reveal list.
         </div>
-
-        <div style={{ marginTop: 16 }}>
-          <div style={lbl}>Sent</div>
-          {sortedHaunts.length === 0 && (
-            <div style={{ fontSize: 11.5, color: T.faint, padding: "16px 8px", textAlign: "center",
-              border: `1px dashed ${T.line}`, marginTop: 6 }}>
-              Nothing sent yet.
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-            {sortedHaunts.map((h) => (
-              <div key={h.id} style={{ border: `1px solid ${T.line}`, borderRadius: 2, background: T.panel2,
-                padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{roleName(h.roleId)}</span>
-                  <span style={{ fontSize: 10, color: T.faint }}>{hauntKindLabel(h)}</span>
-                  <span style={{ fontSize: 9.5, color: h.seenAt ? T.accent : T.amber, marginLeft: "auto" }}>
-                    {h.seenAt ? "Delivered" : "Pending"}
-                  </span>
-                  <button title="Delete" onClick={() => removeHaunt(h.id)}
-                    style={{ background: "none", border: "none", color: T.danger, cursor: "pointer", padding: 2 }}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                {h.kind === "wiki" && (
-                  <div style={{ fontSize: 10.5, color: T.faint }}>
-                    Article: {((wiki || []).find((w) => w.id === h.wikiId) || {}).title || "removed article"}
-                  </div>
-                )}
-                {h.kind === "update" && h.title && (
-                  <div style={{ fontSize: 12, color: T.mut, lineHeight: 1.4 }}>{h.title}</div>
-                )}
-                {h.kind === "action" && (
-                  <div style={{ fontSize: 10.5, color: T.faint }}>Agent: {hauntAgentNameFor(h.agentId)}</div>
-                )}
-                {h.message && (
-                  <div style={{ fontSize: 12, color: T.mut, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{h.message}</div>
-                )}
-                {h.kind === "action" && h.resolution && (
-                  <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 6, marginTop: 2 }}>
-                    <ActionResolution resolution={h.resolution} />
-                  </div>
-                )}
-                <div className="mono" style={{ fontSize: 9.5, color: T.faint }}>
-                  {h.createdAt ? new Date(h.createdAt).toLocaleString() : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <button type="button" onClick={() => toggleGlobalExperimentalEditing(!globalExperimentalEditing)}
+          title={globalExperimentalEditing ? "On for every player. Click to go back to per-article reveals" : "Turn on Experimental Editing for every player, on every article"}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", alignSelf: "flex-start",
+            border: `1px solid ${globalExperimentalEditing ? T.accent : T.line}`, borderRadius: 2, padding: "6px 10px",
+            background: globalExperimentalEditing ? "rgba(159,194,58,.14)" : T.panel3, color: globalExperimentalEditing ? T.accent : T.faint,
+            fontFamily: F.body, fontSize: 11.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
+          <Wand2 size={12} /> {globalExperimentalEditing ? "On for everyone. Restore per-article reveals" : "Turn on for everyone"}
+        </button>
       </div>
-    );
-  };
+      <div style={{ background: T.panel, border: `1px solid ${T.line}`, ...cut(10),
+        padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text }}>END EXPERIMENTAL EDITING</div>
+        <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
+          Turns global access off and swaps every experimentally-edited article back to its original text, keeping the
+          new version stashed so nothing is lost.
+        </div>
+        <Btn kind="danger" style={{ alignSelf: "flex-start" }}
+          onClick={async () => { if (await confirm("End Experimental Editing? Edited articles revert to their original text.")) endExperimentalMode(); }}>
+          End Experimental Editing
+        </Btn>
+      </div>
+    </div>
+  );
 
   // The section switch: agent actions vs. squadron missions vs. narrative
   // prompt vs. resource transactions. Each owns its own content; Notes stays
@@ -1599,8 +1163,7 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
     { id: "narrative", label: "Narrative", icon: Sparkles, title: "Generate a narration prompt from last turn's important events", badge: importantLastTurn.length },
     { id: "recap", label: "Recap", icon: Newspaper, title: "Bundle resolved actions and missions into a Discord post for players", badge: resolvedActionsTotal + resolvedMissionsTotal },
     { id: "transactions", label: "Transactions", icon: ArrowLeftRight, title: "Resource transfers between factions, and to the GM", badge: 0 },
-    { id: "haunt", label: "Haunt", icon: Ghost, title: "Send a fake error screen to specific players",
-      badge: (haunts || []).filter((h) => !h.seenAt).length },
+    { id: "experimental", label: "Experimental", icon: Wand2, title: "Global Experimental Editing access, and ending it", badge: 0 },
   ];
   const activeSection = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
 
@@ -1782,8 +1345,8 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
           recapPane()
         ) : section === "transactions" ? (
           transactionsPane()
-        ) : section === "haunt" ? (
-          hauntPane()
+        ) : section === "experimental" ? (
+          experimentalPane()
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
@@ -1884,13 +1447,13 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
       </div>
     );
   }
-  if (section === "haunt") {
+  if (section === "experimental") {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: T.void }}>
         {sectionBar()}
         {turnBar()}
         <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 18, maxWidth: 700 }}>
-          {hauntPane()}
+          {experimentalPane()}
         </div>
       </div>
     );

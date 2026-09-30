@@ -2,8 +2,6 @@ import { VenetianMask } from "lucide-react";
 import { T, cut } from "../../theme.js";
 import { AGENT_ICONS } from "../../constants.js";
 import FactionSymbol from "../../lib/factionSymbols.jsx";
-import CorruptedArt from "./CorruptedArt.jsx";
-import CorruptionSplat from "./CorruptionSplat.jsx";
 
 // The pure visuals for the three things that sit on the map — a system's
 // plate, a fleet's wedge, an agent's diamond — factored out of MapCanvas so a
@@ -15,30 +13,7 @@ import CorruptionSplat from "./CorruptionSplat.jsx";
 // A system: a chamfered plate in the controlling faction's color with their
 // heraldry centered on it, or — zoomed out past OVERVIEW_ZOOM — a small plain
 // swatch. Caller positions and sizes the wrapping box; this fills it.
-// Corrupted (SystemPopup's toggle) drops the plate/faction chrome for the
-// same broken-image square agents and fleets use, plus a jagged white splat
-// (CorruptionSplat) blotting out past the plate's own footprint like paint
-// that's been struck off and exposed bare white underneath — the one
-// corrupted piece that visibly spreads past its box rather than just
-// replacing what was inside it, since a system reads as a fixed place on the
-// map, not just an icon, when it starts failing. `neighbors` (other systems'
-// screen positions relative to this one, from MapCanvas) bounds the splat to
-// a Voronoi-style cell — see CorruptionSplat — so it only ever covers ground
-// actually closer to this system than to any other one on the map; omit it
-// (as BoardSnapshotModal's read-only caller does) and it just falls back to
-// a plain capped blob. Shown to the GM too, same as a corrupted fleet/agent —
-// SystemPopup's own Corrupted checkbox (opened by clicking this same piece)
-// is unaffected, so un-corrupting it always stays reachable.
-export function SystemPlate({ id, factionId, factionColor, overview, corrupted, neighbors }) {
-  if (corrupted) {
-    const size = overview ? 14 : 34;
-    return (
-      <>
-        <CorruptionSplat seed={id || factionId || "system"} neighbors={neighbors} reach={overview ? 26 : 62} />
-        <CorruptedArt width={size} title="System data unavailable" />
-      </>
-    );
-  }
+export function SystemPlate({ factionId, factionColor, overview }) {
   if (overview) {
     return (
       <div style={{ position: "absolute", inset: 0, ...cut(3), display: "flex",
@@ -72,26 +47,7 @@ export function SystemLabel({ name }) {
 
 // A fleet: an arrowhead wedge in the faction's color with hull shading, its
 // heraldry near the bow, and a carrier-count badge. 30x30, matching MapCanvas.
-// Corrupted (any one of its carriers flagged — see FleetView's toggle and
-// MapCanvas's call site) drops the wedge/faction chrome entirely for the same
-// plain broken-image square agents use, same footprint — the whole fleet
-// piece reads as broken, not just the carrier that's actually corrupted,
-// since a fleet is one glyph on the map with no per-carrier view here.
-export function FleetGlyph({ factionId, factionColor, carrierCount, corrupted }) {
-  if (corrupted) {
-    return (
-      <div style={{ position: "relative", width: 30, height: 30 }}>
-        <CorruptedArt width={30} title="Fleet art unavailable" />
-        {carrierCount != null && (
-          <div className="mono" style={{ position: "absolute", right: -7, bottom: -6, minWidth: 15, height: 14,
-            padding: "0 3px", background: T.ink, border: `1px solid ${factionColor}`,
-            color: factionColor, fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {carrierCount}
-          </div>
-        )}
-      </div>
-    );
-  }
+export function FleetGlyph({ factionId, factionColor, carrierCount }) {
   return (
     <div style={{ position: "relative", width: 30, height: 30,
       filter: `drop-shadow(0 2px 3px rgba(0,0,0,.7)) drop-shadow(0 0 3px ${factionColor}77)` }}>
@@ -117,26 +73,9 @@ export function FleetGlyph({ factionId, factionColor, carrierCount, corrupted })
 // An agent: a rotated diamond in the faction's color, their assigned glyph
 // (AGENT_ICONS, falling back to VenetianMask) centered on it, and an optional
 // badge (MapCanvas uses this for the agent's remaining action-request count).
-// 29x29, matching MapCanvas. Corrupted (GM Tools' theme, see AgentsView's
-// toggle) drops the diamond/faction-color chrome entirely for a plain
-// broken-image square, same footprint — the badge (a real number, not art)
-// still shows over it.
-export function AgentGlyph({ factionColor, icon, corrupted, badge, badgeTitle }) {
+// 29x29, matching MapCanvas.
+export function AgentGlyph({ factionColor, icon, badge, badgeTitle }) {
   const Icon = AGENT_ICONS[icon] || VenetianMask;
-  if (corrupted) {
-    return (
-      <div style={{ position: "relative", width: 29, height: 29 }}>
-        <CorruptedArt width={29} title="Agent glyph unavailable" />
-        {badge != null && (
-          <div className="mono" title={badgeTitle} style={{ position: "absolute", right: -7, bottom: -6, minWidth: 15, height: 14,
-            padding: "0 3px", background: T.ink, border: `1px solid ${factionColor}`,
-            color: factionColor, fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {badge}
-          </div>
-        )}
-      </div>
-    );
-  }
   return (
     <div style={{ position: "relative", width: 29, height: 29,
       filter: `drop-shadow(0 2px 3px rgba(0,0,0,.7)) drop-shadow(0 0 3px ${factionColor}77)` }}>
