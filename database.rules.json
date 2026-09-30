@@ -1,0 +1,71 @@
+{
+  "rules": {
+    "sectors": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+
+    "sectorNotes": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+
+    "sectorArchive": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null",
+        "archivedActions": { ".indexOn": "turn" },
+        "archivedMissions": { ".indexOn": "turn" }
+      }
+    },
+
+    "sectorSnapshots": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+
+    "sectorReads": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+
+    "sectorWikiImages": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null",
+        "$id": {
+          ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 1400000)"
+        }
+      }
+    },
+
+    "sectorWikiBodies": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+
+    "sectorArt": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+
+    "sectorWiki": {
+      "$sector": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    }
+  }
+}

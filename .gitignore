@@ -1,0 +1,11 @@
+node_modules
+dist
+.env.local
+.env.*.local
+*.log
+story-log.md
+recap.md
+
+# Save/backup exports
+backups/
+scripts/*-backup-*.json
