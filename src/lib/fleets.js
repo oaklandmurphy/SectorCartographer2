@@ -8,10 +8,13 @@ import { squadronsOf } from "./carriers.js";
 // Every other fleet sharing this fleet's system + faction — the fleet
 // transfer modal's "existing fleet" target choices. A fleet with no systemId
 // (in transit) has no siblings to transfer to.
-export function friendlyFleetsInSystem(fleets, systemId, factionId, excludeFleetId) {
+export function friendlyFleetsInSystem(fleets, systemId, factionId, excludeFleetId, subregion = null) {
   if (!systemId) return [];
+  // Fleets are tied to a subregion, so a transfer only reaches fleets in the same one.
+  const here = subregion == null ? null : subregion;
   return (fleets || []).filter((f) =>
-    f.id !== excludeFleetId && f.systemId === systemId && f.factionId === factionId);
+    f.id !== excludeFleetId && f.systemId === systemId && f.factionId === factionId
+    && (f.subregion == null ? null : f.subregion) === here);
 }
 
 // Move one or more whole carriers from one existing fleet to another. Carriers
@@ -108,6 +111,7 @@ export function spawnFleet(sourceFleet, name) {
     name: (name || "").trim() || "New Fleet",
     factionId: sourceFleet.factionId,
     systemId: sourceFleet.systemId,
+    subregion: sourceFleet.subregion == null ? null : sourceFleet.subregion,
     x: sourceFleet.x,
     y: sourceFleet.y,
     ships: [],

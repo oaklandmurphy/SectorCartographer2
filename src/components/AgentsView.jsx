@@ -8,6 +8,7 @@ import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
 import MobileTabRail from "./ui/MobileTabRail.jsx";
+import { locationName, subregionCount, subregionKey, subregionOptions, storedSubregion } from "../lib/subregions.js";
 
 // Faction tabs run along the top (the GM, who sees every faction, picks one to
 // work in; a lone-faction player gets no tab strip, there being nothing to pick).
@@ -271,13 +272,22 @@ export default function AgentsView({
               </div>
               {canPlaceAgent ? (
                 <select style={selStyle} value={a.systemId || ""}
-                  onChange={(e) => { if (e.target.value) patchAgent(a.id, { systemId: e.target.value }); }}>
+                  onChange={(e) => { if (e.target.value) patchAgent(a.id, { systemId: e.target.value, subregion: null }); }}>
                   {!a.systemId && <option value="" disabled hidden>Unplaced — select a system</option>}
                   {systems.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               ) : (
-                <div style={{ fontSize: 13, color: T.text }}>{a.systemId ? systemName(a.systemId) : "Unplaced"}</div>
+                <div style={{ fontSize: 13, color: T.text }}>{a.systemId ? locationName(systems.find((s) => s.id === a.systemId), a.subregion) : "Unplaced"}</div>
               )}
+              {canPlaceAgent && (() => {
+                const sys = a.systemId ? systems.find((s) => s.id === a.systemId) : null;
+                return sys && subregionCount(sys) > 0 ? (
+                  <select style={{ ...selStyle, marginTop: 6 }} value={subregionKey(sys, a.subregion)}
+                    onChange={(e) => patchAgent(a.id, { subregion: storedSubregion(e.target.value) })}>
+                    {subregionOptions(sys).map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
+                  </select>
+                ) : null;
+              })()}
             </div>
 
             <div style={{ flex: "1 1 220px" }}>

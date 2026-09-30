@@ -11,6 +11,7 @@ import ShipArt from "./ui/ShipArt.jsx";
 import ArtLibrary from "./ArtLibrary.jsx";
 import SquadronOrderModal from "./SquadronOrderModal.jsx";
 import MissionResolution from "./ui/MissionResolution.jsx";
+import { locationName } from "../lib/subregions.js";
 
 // The Fleet / Compare selectors up top. A native <select> can't color a row to
 // its faction or stack a second line of detail, so this is a small custom
@@ -55,7 +56,7 @@ function FleetPicker({ fleets, value, onChange, factionById, systems, isMobile,
           {fleet && (
             <span className="mono" style={{ display: "block", fontSize: 10, color: T.faint, marginTop: 1,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {fac.name || "No faction"} · {n} carrier{n === 1 ? "" : "s"} · {home ? home.name : "In transit"}
+              {fac.name || "No faction"} · {n} carrier{n === 1 ? "" : "s"} · {home ? locationName(home, fleet.subregion) : "In transit"}
             </span>
           )}
         </span>
@@ -368,7 +369,7 @@ export default function FleetView({
           )}
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Anchor size={11} style={{ color: T.faint }} />
-            {home ? home.name : "In transit"}
+            {home ? locationName(home, fleet.subregion) : "In transit"}
           </span>
           <span className="mono" style={{ color: T.faint }}>
             {n} carrier{n === 1 ? "" : "s"} · {shownFleetCraft} craft

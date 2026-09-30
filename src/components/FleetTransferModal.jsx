@@ -6,6 +6,7 @@ import { friendlyFleetsInSystem } from "../lib/fleets.js";
 import Btn from "./ui/Btn.jsx";
 import PopupHeader from "./ui/PopupHeader.jsx";
 import ShipArt from "./ui/ShipArt.jsx";
+import { locationName } from "../lib/subregions.js";
 
 // Fleet transfer: move whole carriers or a single squadron between the source
 // fleet and a friendly fleet in the same system (or spin off a brand-new
@@ -24,7 +25,7 @@ export default function FleetTransferModal({
 
   const source = fleets.find((f) => f.id === fleetId) || null;
   const siblings = useMemo(
-    () => (source ? friendlyFleetsInSystem(fleets, source.systemId, source.factionId, source.id) : []),
+    () => (source ? friendlyFleetsInSystem(fleets, source.systemId, source.factionId, source.id, source.subregion) : []),
     [fleets, source]
   );
 
@@ -218,7 +219,7 @@ export default function FleetTransferModal({
         <div className="mono" style={{ fontSize: 9.5, color: T.faint, display: "flex", alignItems: "center", gap: 5 }}>
           <span style={{ color: fac.color }}>{fac.name}</span>
           <span style={{ color: T.line }}>·</span>
-          <span>{h ? h.name : "In transit"}</span>
+          <span>{h ? locationName(h, fleet.subregion) : "In transit"}</span>
           <span style={{ color: T.line }}>·</span>
           <span>{n} carrier{n === 1 ? "" : "s"}</span>
         </div>
