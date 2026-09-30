@@ -3,6 +3,7 @@ import { Archive, VenetianMask, Ship, Check, Clock, History, Flag, Filter, Exter
 import { T, F, lbl, selStyle } from "../theme.js";
 import Btn from "./ui/Btn.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
+import { missionTargetLine } from "../lib/missionTypes.js";
 import MissionResolution from "./ui/MissionResolution.jsx";
 
 // A player's own record of everything they've put in front of the GM: agent
@@ -69,6 +70,7 @@ export default function ActionArchiveView({
       issuerType: "fleet", issuerId: m.fleetId, issuerLabel: fleetLabel(m.fleetId),
       status: m.status, resolution: m.resolution, text: m.text,
       detachments: m.detachments || [],
+      missionType: m.missionType, target: m.target,
       createdAt: m.createdAt || 0, resolvedAt: m.resolvedAt || 0,
     });
     (actions || []).forEach((a) => pushAction(a, curTurn));
@@ -167,6 +169,9 @@ export default function ActionArchiveView({
           )}
           {!isAction && it.detachments.length > 0 && (
             <span className="mono" style={{ fontSize: 10.5, color: T.mut }}>{detachmentSummary(it)}</span>
+          )}
+          {!isAction && missionTargetLine(it) && (
+            <span className="mono" style={{ fontSize: 10.5, color: T.accent }}>{missionTargetLine(it)}</span>
           )}
           <span style={{ marginLeft: "auto", fontSize: 9.5, color: T.faint }}>
             {fmtDateTime(it.createdAt)}

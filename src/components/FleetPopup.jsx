@@ -15,7 +15,7 @@ export default function FleetPopup({
   fleet, anchor, containerSize, isMobile, canEdit, isGM, factions, fleets, factionColor, home,
   patchFleet, renameFleet, addShip, patchShip, removeShip, moveShip, deleteFleet, onClose, onShipDragStart,
   addSquadron, patchSquadron, removeSquadron, goToFleet, roles, art = [],
-  canOrderFor, submitMission, onOpenFleetTransfer,
+  canOrderFor, submitMission, onOpenFleetTransfer, systems = [], links = [],
   incoming = null, viewerFactionId = null,
 }) {
   const confirm = useConfirm();
@@ -238,9 +238,9 @@ export default function FleetPopup({
         )}
     </MapPopup>
     {orderOpen && (
-      <SquadronOrderModal fleet={fleet} isMobile={isMobile}
+      <SquadronOrderModal fleet={fleet} systems={systems} links={links} isMobile={isMobile}
         onClose={() => setOrderOpen(false)}
-        onSubmit={(detachments, text) => { submitMission(fleet.id, detachments, text); setOrderOpen(false); }} />
+        onSubmit={(detachments, text, spec) => { submitMission(fleet.id, detachments, text, spec); setOrderOpen(false); }} />
     )}
     </>
   );

@@ -1,10 +1,6 @@
-// The mission odds table — a standalone dice-reference tool.
-//
-// It is deliberately NOT wired to the sector: no fleet, carrier or squadron
-// feeds it, and nothing it computes is saved. You type the numbers in and read
-// the result off, the same way you would with a table in a rulebook. Keeping it
-// unattached is the point — the GM resolves engagements the map doesn't model
-// (boarding actions, ground assaults, a raid on something that isn't a fleet).
+// The odds model behind squadron-mission resolution (SquadronMissionsPanel).
+// The standalone Odds tab that used to display it as a table has been removed;
+// only the maths the GM's resolution tool still uses remains.
 //
 // The whole model is one number, E:
 //
@@ -35,9 +31,6 @@ export const RATIO_COLS = [
 ];
 
 export const EVEN_RATIO_INDEX = RATIO_COLS.findIndex((c) => c.label === "1:1");
-
-// every 2d6 result — the table's rows
-export const ROLLS = Array.from({ length: 11 }, (_, i) => i + 2);
 
 export const MIN_SHIFT = -12;
 export const MAX_SHIFT = 12;

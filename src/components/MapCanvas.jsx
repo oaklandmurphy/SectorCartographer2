@@ -413,7 +413,7 @@ export default function MapCanvas({
           addSquadron={addSquadron} patchSquadron={patchSquadron} removeSquadron={removeSquadron}
           onShipDragStart={(ship, e) => beginShipDrag(ship, selFleetObj.id, e)}
           goToFleet={goToFleet} roles={roles} art={art}
-          canOrderFor={canOrderFor} submitMission={submitMission}
+          canOrderFor={canOrderFor} submitMission={submitMission} systems={systems} links={links}
           onOpenFleetTransfer={openFleetTransfer}
           incoming={incoming} viewerFactionId={viewerFactionId}
         />

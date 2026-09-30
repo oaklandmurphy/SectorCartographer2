@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
-import { Map as MapIcon, Library, Satellite, Network, Ship, Dices, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff } from "lucide-react";
+import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff } from "lucide-react";
 import { T, F, panelStyle, cut } from "./theme.js";
 import { KNOWN_CODE_KEY, ROLE_COLORS, DEFAULT_SQUADRON_SIZE, GM_RECIPIENT, MIN_ZOOM, MAX_ZOOM } from "./constants.js";
 import { storage } from "./lib/storage.js";
@@ -12,6 +12,7 @@ import {
 } from "./lib/sectorRepo.js";
 import { buildSectorUpdates, buildCollectionUpdates, buildGroupUpdates, buildReadsUpdates, ARCHIVE_COLLECTIONS, SNAPSHOT_COLLECTIONS, READ_COLLECTIONS } from "./lib/sectorSchema.js";
 import { resolveViewer, canSee, canSeeSubmission, visibleFleets, friendlyFactionIds, visibleAgents, visibleOrders, visibleActions, visibleMissions } from "./lib/visibility.js";
+import { MISSION_TYPES, targetableSystems } from "./lib/missionTypes.js";
 import { craftInCarrier, withSquadrons, squadronsOf, commitDetachments, returnDetachments, survivingDetachments, incomingCraft } from "./lib/carriers.js";
 import { moveShips, moveSquadron, moveVessel, disbandEmptyFleets, spawnFleet } from "./lib/fleets.js";
 import { effectiveMoveOrders } from "./lib/movement.js";
@@ -34,7 +35,6 @@ const FleetView = lazy(() => import("./components/FleetView.jsx"));
 const WikiView = lazy(() => import("./components/WikiView.jsx"));
 const PoliticsView = lazy(() => import("./components/PoliticsView.jsx"));
 const AssetsView = lazy(() => import("./components/AssetsView.jsx"));
-const OddsView = lazy(() => import("./components/OddsView.jsx"));
 const UpdatesView = lazy(() => import("./components/UpdatesView.jsx"));
 const AgentsView = lazy(() => import("./components/AgentsView.jsx"));
 const GMToolsView = lazy(() => import("./components/GMToolsView.jsx"));
@@ -1803,15 +1803,22 @@ export default function GalaxySectorMap() {
 
   /* ---- squadron missions: a player commits some of a fleet's fighters/bombers
      (whole or partial squadrons) to a free-text mission, for the GM to adjudicate
-     against the mission odds table. Committing pulls the craft straight out of
+     against the mission odds model. Committing pulls the craft straight out of
      their squadrons' counts — that's what makes them unavailable for another
      mission. Submitting locks it in: unlike a move order, a player cannot pull a
      squadron mission back once it's sent, only the GM can (see removeMission). */
-  function submitMission(fleetId, detachments, text) {
+  function submitMission(fleetId, detachments, text, spec) {
     const fleet = fleets.find((f) => f.id === fleetId);
     if (!fleet || !canOrderFor(fleet.factionId)) return;
     const body = (text || "").trim();
     if (!body) return;
+    // The target must be the fleet's own system or one link away, and the
+    // subregion must exist there; names are snapshotted so the record still
+    // reads correctly if the system or subregion is later renamed or removed.
+    const missionType = spec && MISSION_TYPES.some((t) => t.id === spec.missionType) ? spec.missionType : null;
+    const tSys = spec && spec.target && targetableSystems(systems, links, fleet.systemId).find((s) => s.id === spec.target.systemId);
+    const tSub = tSys && (tSys.subregions || []).find((r) => r.id === spec.target.subregionId);
+    if (!missionType || !tSub) return;
     // Re-derive each detachment against the fleet as it stands right now and clamp
     // to what's actually available, rather than trusting counts the composer UI
     // computed from a possibly-stale render.
@@ -1827,6 +1834,8 @@ export default function GalaxySectorMap() {
     setFleets((fs) => commitDetachments(fs, fleetId, clean));
     setMissions((ms) => [...ms, {
       id: uid("msn"), factionId: fleet.factionId, fleetId, text: body,
+      missionType,
+      target: { systemId: tSys.id, systemName: tSys.name || "", subregionId: tSub.id, subregionName: tSub.name || "" },
       detachments: clean, status: "pending", resolution: null,
       createdBy: viewer.roleId ? { roleId: viewer.roleId, roleName: viewer.roleName } : null,
       createdAt: Date.now(), resolvedAt: null,
@@ -2787,7 +2796,6 @@ export default function GalaxySectorMap() {
     { id: "updates", label: "Updates", icon: Bell, title: "Articles, action resolutions & mission resolutions your faction has not seen", show: true,
       badge: unseenArticles.length + unseenResolvedActions.length + unseenResolvedMissions.length },
     { id: "archive", label: "Archive", icon: Archive, title: "Your submitted actions & squadron orders, by turn", show: canOrder },
-    { id: "odds", label: "Odds", icon: Dices, title: "Mission odds table", show: true },
     { id: "gmtools", label: "GM Tools", icon: Gavel, title: "GM tools: action & mission requests, roll resolution & notes",
       show: isGM, badge: isGM ? pendingActionCount + pendingMissionCount : 0 },
   ].filter((t) => t.show);
@@ -3047,7 +3055,7 @@ export default function GalaxySectorMap() {
       <Suspense fallback={null}>
         {activeTab === "fleet" && (
           <FleetView
-            fleets={displayFleets} systems={displaySystems} canEdit={canEdit} isMobile={isMobile}
+            fleets={displayFleets} systems={displaySystems} links={links} canEdit={canEdit} isMobile={isMobile}
             factionById={factionById} factions={factions} patchFleet={patchFleet}
             primaryId={fleetPrimaryId} setPrimaryId={setFleetPrimaryId}
             compareId={fleetCompareId} setCompareId={setFleetCompareId}
@@ -3157,7 +3165,6 @@ export default function GalaxySectorMap() {
 
         {/* A dice-reference tool, not a view of the sector — it takes no props but
             the breakpoint, and deliberately reads nothing from the map. */}
-        {activeTab === "odds" && <OddsView isMobile={isMobile} />}
 
         {/* GM-only: no tab button reaches this for anyone else, and the render is
             gated again here in case a player types the hash in by hand. */}
