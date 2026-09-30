@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, ChevronLeft, FileText, EyeOff, Users, Table, Eye, Pencil,
   Image as ImageIcon, ImagePlus, X, AlertTriangle, Inbox, CheckCircle2, Undo2, Send, Clock, Search, Globe,
-  ArrowUpDown, Filter, BellOff, Copy, Check, Link2, Wand2 } from "lucide-react";
+  ArrowUpDown, Filter, BellOff, Copy, Check, Link2 } from "lucide-react";
 import { T, F, inputStyle, selStyle, lbl } from "../theme.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import { WIKI_CATS, DISCORD_GAME_ROLE } from "../constants.js";
 import { formatHash } from "../lib/routing.js";
 import { isRestricted } from "../lib/visibility.js";
 import { bodyExcerpt, CSV_TEMPLATE, CSV_TEMPLATE_CAPTION } from "../lib/codexBody.js";
-import { revealsExperimentalEdit } from "../lib/experimentalReveal.js";
 import { processImage } from "../lib/codexImage.js";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
@@ -24,7 +23,7 @@ const formatUpdatedAt = (value) => value ? new Intl.DateTimeFormat(undefined, {
 export default function WikiView({ wiki, roles = [], factions = [], threads = [], addThread, canEdit, isMobile, viewer, activeCat, setActiveCat, selectedId, setSelectedId,
   addEntry, patchEntry, deleteEntry, submitEntry, patchOwnEntry, withdrawEntry, approveEntry,
   publishEntry, unpublishEntry, publishEntryQuietly, proposeEdit,
-  loadImage, saveImage, loadBody, saveBody, loadAllBodies, globalExperimentalEditing }) {
+  loadImage, saveImage, loadBody, saveBody, loadAllBodies }) {
   const confirm = useConfirm();
   const catMeta = WIKI_CATS.find((c) => c.id === activeCat) || WIKI_CATS[0];
   const catLabel = (id) => (WIKI_CATS.find((c) => c.id === id) || {}).label || id;
@@ -96,15 +95,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
   // A change proposal's own diff (below) also needs the live entry it revises —
   // fetch both images together rather than only the open entry's.
   const originalId = (selected && selected.editOf) || null;
-  // A live entry published through Experimental Editing keeps its pre-edit body
-  // stashed at this derived id (see App.jsx's approveWikiEntry) so the
-  // highlighted diff can still be rendered long after the proposal itself is
-  // gone — fetched whenever the entry is under Experimental Editing at all,
-  // since a viewer the GM hasn't revealed it to (see revealed below) reads
-  // this old body as the article's plain content, not just the GM/revealed
-  // viewer's diff.
-  const testEditBeforeId = (selected && selected.testEditCanon) ? `${selected.id}__testEditBefore` : null;
-  const revealed = revealsExperimentalEdit(selected, { isGM: canEdit, viewer, globalExperimentalEditing });
   // A page's raster image lives at its own database path, not on the entity —
   // see lib/codexImage.js and sectorRepo.js loadWikiImage/saveWikiImage — so
   // only whichever page(s) are actually on screen get fetched. Keyed by wiki
@@ -132,14 +122,14 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
   // for whichever one(s) aren't covered by that.
   const [bodyCache, setBodyCache] = useState({});
   useEffect(() => {
-    const ids = [selectedId, originalId, testEditBeforeId].filter(Boolean);
+    const ids = [selectedId, originalId].filter(Boolean);
     const missing = ids.filter((id) => !(id in bodyCache) && !(allBodies && id in allBodies));
     if (!missing.length) return;
     let cancelled = false;
     Promise.all(missing.map((id) => loadBody(id).then((text) => [id, text]).catch(() => [id, ""])))
       .then((pairs) => { if (!cancelled) setBodyCache((c) => ({ ...c, ...Object.fromEntries(pairs) })); });
     return () => { cancelled = true; };
-  }, [selectedId, originalId, testEditBeforeId, bodyCache, allBodies, loadBody]);
+  }, [selectedId, originalId, bodyCache, allBodies, loadBody]);
   const bodyFor = (id) => (id ? (bodyCache[id] ?? (allBodies && allBodies[id]) ?? "") : "");
 
   // Debounced per-article body save — one independent timer per id (kept in a
@@ -150,23 +140,18 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
   // through the normal sector autosave; the body itself is written directly.
   const bodySaveTimers = useRef({});
   // `patch` is optional — omitted for a body that isn't itself a wiki entity and
-  // has nowhere to keep an excerpt. `entryId`/`excerptField` default to `id`/
-  // "excerpt" for a normal body save, but the testEditBeforeId box below (an
-  // experimental article's stashed "old text", saved at a derived id, not its
-  // own entity) passes the live entry's id and "testEditBeforeExcerpt" instead,
-  // so a non-revealed viewer's list/timeline preview has an old-text excerpt to
-  // read alongside the old title/body — see lib/experimentalReveal.js.
-  function scheduleBodySave(id, text, patch, entryId = id, excerptField = "excerpt") {
+  // has nowhere to keep an excerpt.
+  function scheduleBodySave(id, text, patch) {
     if (bodySaveTimers.current[id]) clearTimeout(bodySaveTimers.current[id]);
     bodySaveTimers.current[id] = setTimeout(() => {
       delete bodySaveTimers.current[id];
       saveBody(id, text).catch((e) => console.warn("[wiki] body save error", e));
-      if (patch) patch(entryId, { [excerptField]: bodyExcerpt(text).slice(0, 90) });
+      if (patch) patch(id, { excerpt: bodyExcerpt(text).slice(0, 90) });
     }, 600);
   }
-  function handleBodyChange(id, text, patch, entryId = id, excerptField = "excerpt") {
+  function handleBodyChange(id, text, patch) {
     setBodyCache((c) => ({ ...c, [id]: text }));
-    scheduleBodySave(id, text, patch, entryId, excerptField);
+    scheduleBodySave(id, text, patch);
   }
   // Editors see only the raw textarea, so a ```csv block is invisible while
   // writing — hence the preview toggle. It's keyed to an entry id, not a bare
@@ -441,12 +426,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
         const ready = pending && !!e.ready; // player has flagged it done
         const who = e.submittedBy && e.submittedBy.roleName;
         const fc = e.factionId ? factionColor(e.factionId) : null;
-        // A card for an entry currently under Experimental Editing shows its old
-        // (pre-edit) title/excerpt to anyone not revealed — same rule as the
-        // article page itself; see lib/experimentalReveal.js.
-        const revealed = revealsExperimentalEdit(e, { isGM: canEdit, viewer, globalExperimentalEditing });
-        const cardTitle = revealed ? e.title : (e.testEditBeforeTitle || e.title);
-        const cardExcerpt = revealed ? e.excerpt : (e.testEditBeforeExcerpt || e.excerpt);
         return (
           <button key={e.id} onClick={() => selectEntry(e.id)}
             style={{ textAlign: "left", cursor: "pointer", background: on ? "rgba(159,194,58,.1)" : fc ? `${fc}1f` : T.panel2,
@@ -455,7 +434,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span className="stencil" style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, letterSpacing: ".03em",
                 color: on ? T.accent : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {cardTitle || "Untitled"}
+                {e.title || "Untitled"}
               </span>
               {pending && (
                 <span title={`${isEditProp ? "Proposed edit" : "New entry"} · ${ready ? "Ready for review" : "Draft — still being written"}${who ? ` · ${who}` : ""}`}
@@ -464,11 +443,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
                     borderRadius: 2, padding: "1px 4px", fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase" }}>
                   {ready ? <Send size={9} /> : <Pencil size={9} />}
                   {queueMode ? (who || (ready ? "Ready" : "Draft")) : (ready ? "Submitted" : "Draft")}
-                </span>
-              )}
-              {canEdit && pending && e.testEdited && (
-                <span title="Player used Experimental Editing on this" style={{ display: "inline-flex", color: T.accent, flexShrink: 0 }}>
-                  <Wand2 size={11} />
                 </span>
               )}
               {draft && (
@@ -490,7 +464,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
             </span>
             <span style={{ fontSize: 10.5, color: T.faint, lineHeight: 1.4, overflow: "hidden",
               display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-              {cardExcerpt || "—"}
+              {e.excerpt || "—"}
             </span>
             {/* Results span every category, so tag each with the one it lives in. */}
             {searching && (
@@ -533,13 +507,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
     const original = isEditProposal ? wiki.find((e) => e.id === selected.editOf) : null;
     // On a live entry, a player's own already-submitted proposal for it (if any),
     // so we offer "open it" rather than a second "propose an edit".
-    // Whether this viewer is allowed to see the highlighted change on a page
-    // published through Experimental Editing — the same role list the GM uses
-    // to reveal the button itself (see the "Experimental Editing revealed to"
-    // row), or every viewer at once if the GM's global toggle is on. Everyone
-    // else reads the old (pre-edit) text, same as any normal article — see
-    // `revealed` above and lib/experimentalReveal.js.
-    const canSeeHighlight = revealed;
     const myPendingEdit = canSubmit && !pending
       ? wiki.find((e) => e.status === "pending" && e.editOf === selected.id && isMine(e))
       : null;
@@ -597,48 +564,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
             </select>
           </div>
         )}
-        {/* GM-only: fake the same highlighted-change publishing a player's
-            Experimental Editing produces, on any entry the GM is writing
-            directly — no proposal/approval needed. Turning it on seeds "Old
-            text" with a copy of whatever's live right now, so the GM starts
-            from two identical boxes and edits either side from there. */}
-        {!pending && (
-          <div>
-            <Btn active={!!selected.testEditCanon} onClick={() => {
-              const on = !selected.testEditCanon;
-              patch(selected.id, { testEditCanon: on, ...(on ? { testEditBeforeExcerpt: selected.excerpt } : {}) });
-              if (on) {
-                const beforeId = `${selected.id}__testEditBefore`;
-                const current = bodyFor(selected.id);
-                setBodyCache((c) => ({ ...c, [beforeId]: current }));
-                saveBody(beforeId, current).catch((err) => console.warn("[wiki] could not seed the old text", err));
-              }
-            }} title={selected.testEditCanon
-              ? "Publish this entry as plain text again"
-              : "Publish this entry as a highlighted change (green/red) — write the old and new text yourself"}>
-              <Wand2 size={13} /> Experimental Editing
-            </Btn>
-          </div>
-        )}
-        {selected.testEditCanon ? (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={lbl}>New text</span>
-              <AutoTextarea ref={bodyRef} value={bodyFor(selected.id)} onChange={(e) => handleBodyChange(selected.id, e.target.value, patch)}
-                placeholder="The text as it reads once published"
-                style={{ ...inputStyle, minHeight: isMobile ? 160 : 240, resize: "vertical", lineHeight: 1.6,
-                  fontFamily: F.mono, fontSize: 12.5, padding: 12 }} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={lbl}>Old text</span>
-              <AutoTextarea value={bodyFor(testEditBeforeId)}
-                onChange={(e) => handleBodyChange(testEditBeforeId, e.target.value, patch, selected.id, "testEditBeforeExcerpt")}
-                placeholder="The text this replaced — shown struck through in red"
-                style={{ ...inputStyle, minHeight: isMobile ? 160 : 240, resize: "vertical", lineHeight: 1.6,
-                  fontFamily: F.mono, fontSize: 12.5, padding: 12 }} />
-            </div>
-          </>
-        ) : (
+        {(
           <>
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ ...lbl, flex: 1 }}>Body</span>
@@ -706,16 +632,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
             </div>
           );
         })()}
-        {/* GM-only: the player used Experimental Editing on this proposal — a persistent
-            flag (survives even after they close it again), not a one-off toast,
-            so it's still visible whenever the GM gets around to reviewing this. */}
-        {canEdit && pending && isEditProposal && selected.testEdited && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: T.mut }}>
-            <Wand2 size={12} style={{ flexShrink: 0 }} />
-            {(selected.submittedBy && selected.submittedBy.roleName) || "This player"} used Experimental Editing on this proposal
-            {formatUpdatedAt(selected.testEditedAt) ? ` (${formatUpdatedAt(selected.testEditedAt)}).` : "."}
-          </div>
-        )}
         {draft && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.mut,
             border: `1px solid ${T.line}`, borderRadius: 2, padding: "6px 10px", background: "rgba(107,98,80,.08)" }}>
@@ -737,49 +653,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
             {!isEditProposal && (
               <VisibilityRow roles={roles} value={selected.visibility}
                 onChange={(v) => patchEntry(selected.id, { visibility: v })} />
-            )}
-            {/* Which players (if any) see the Experimental Editing button when they propose
-                a change to this entry — off (nobody) until the GM opts specific
-                roles in, same idea as visibility but a separate switch: a player
-                can be able to read a page without being able to test-edit it.
-                The GM's global toggle (GM Tools) overrides this list
-                for everyone without changing it, so it's called out separately
-                rather than folded into the role count below. */}
-            {!isEditProposal && roles.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ ...lbl, display: "flex", alignItems: "center", gap: 6 }}>
-                  <Wand2 size={12} /> Experimental Editing revealed to
-                  <span style={{ marginLeft: "auto", color: (selected.testEditRoles || []).length ? T.accent : T.faint,
-                    textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
-                    {(selected.testEditRoles || []).length
-                      ? `${selected.testEditRoles.length} role${selected.testEditRoles.length === 1 ? "" : "s"}`
-                      : "Nobody"}
-                  </span>
-                </div>
-                {globalExperimentalEditing && (
-                  <div style={{ fontSize: 10.5, color: T.accent }}>
-                    GM Tools' global toggle is on — every player sees it here regardless of this list.
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  {roles.map((r) => {
-                    const on = (selected.testEditRoles || []).includes(r.id);
-                    return (
-                      <button key={r.id} type="button" title={`${on ? "Stop revealing" : "Reveal"} Experimental Editing to ${r.name || "this player"}`}
-                        onClick={() => {
-                          const cur = selected.testEditRoles || [];
-                          patchEntry(selected.id, { testEditRoles: on ? cur.filter((x) => x !== r.id) : [...cur, r.id] });
-                        }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", whiteSpace: "nowrap",
-                          border: `1px solid ${on ? (r.color || T.accent) : T.line}`, borderRadius: 2, padding: "4px 8px",
-                          background: on ? `${r.color || T.accent}26` : T.panel2, color: on ? (r.color || T.accent) : T.mut,
-                          fontFamily: F.body, fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
-                        {r.name || "Unnamed"}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
             )}
             {isEditProposal && original && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, border: `1px solid ${T.line}`,
@@ -828,7 +701,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
               {pending && (
                 <Btn kind="primary" onClick={async () => {
                   // Approving a change proposal overwrites the live entry's
-                  // image/body at editOf (and its __testEditBefore) once the
+                  // image/body at editOf once the
                   // writes land — but this session may already have those ids
                   // cached (e.g. from the diff shown above), and the cache never
                   // re-fetches an id it already has an answer for. Drop them so
@@ -837,8 +710,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
                   const targetId = selected.editOf;
                   await approveEntry(selected.id);
                   if (targetId) {
-                    const beforeId = `${targetId}__testEditBefore`;
-                    setBodyCache((c) => { const { [targetId]: _a, [beforeId]: _b, ...rest } = c; return rest; });
+                    setBodyCache((c) => { const { [targetId]: _a, ...rest } = c; return rest; });
                     setImageCache((c) => { const { [targetId]: _a, ...rest } = c; return rest; });
                   }
                 }}>
@@ -900,26 +772,6 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
           <>
             {editForm(patchOwnEntry)}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {/* A player's own proposed edit: if the GM has revealed Experimental Editing
-                  for the entry it revises, this flags the proposal for it — once
-                  approved, the live article shows the change highlighted (green
-                  added / red removed) as its actual published content instead of
-                  plain merged text, so everyone can see it was published that way.
-                  No preview here; the highlighting only ever appears on the real,
-                  published page. The GM's global toggle (GM Tools)
-                  reveals it for every player on every entry, same as it does
-                  for the highlight above, regardless of this entry's own
-                  testEditRoles. */}
-              {isEditProposal && original && (globalExperimentalEditing
-                || (original.testEditRoles || []).includes(viewer && viewer.roleId)) && (
-                <Btn active={!!selected.testEdited} onClick={() => patchOwnEntry(selected.id,
-                  { testEdited: !selected.testEdited, testEditedAt: Date.now() })}
-                  title={selected.testEdited
-                    ? "On — once approved, this article will publish with the change highlighted, not plain text"
-                    : "Publish this change highlighted (green/red) as part of the live article, instead of plain merged text"}>
-                  <Wand2 size={14} /> Experimental Editing
-                </Btn>
-              )}
               {ready ? (
                 <Btn onClick={() => patchOwnEntry(selected.id, { ready: false })}
                   title="Take this back to a draft so you can keep working — the GM sees it's no longer ready">
@@ -942,28 +794,9 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
           </>
         ) : (
           <>
-            {/* An entry published through Experimental Editing shows its change
-                highlighted (green added / red removed) as the actual published
-                content — but only to a viewer the GM has revealed it to (see
-                "Experimental Editing revealed to" and canSeeHighlight above).
-                Everyone else reads the old (pre-edit) title/body instead, as if
-                the edit never happened; nothing about the page looks different
-                to them. The pre-edit title/body was stashed at approval/enable
-                time (see App.jsx's approveWikiEntry and the GM's own toggle
-                above) so this still renders correctly long after the proposal
-                itself is gone. */}
-            {canSeeHighlight && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <DiffLegend />
-              </div>
-            )}
-            {canSeeHighlight && selected.testEditBeforeTitle && selected.testEditBeforeTitle !== selected.title ? (
-              <CodexDiff before={selected.testEditBeforeTitle} after={selected.title} />
-            ) : (
-              <div className="stencil" style={{ fontSize: 24, fontWeight: 800, letterSpacing: ".03em", color: T.text }}>
-                {(revealed ? selected.title : (selected.testEditBeforeTitle || selected.title)) || "Untitled"}
-              </div>
-            )}
+            <div className="stencil" style={{ fontSize: 24, fontWeight: 800, letterSpacing: ".03em", color: T.text }}>
+              {selected.title || "Untitled"}
+            </div>
             {formatUpdatedAt(selected.updatedAt || selected.createdAt) && (
               <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: T.faint }}>
                 <Clock size={11} /> Last updated {formatUpdatedAt(selected.updatedAt || selected.createdAt)}
@@ -976,9 +809,7 @@ export default function WikiView({ wiki, roles = [], factions = [], threads = []
             )}
             {/* Players see the image section only when a picture is present. */}
             {imageFor(selected.id) && imageFrame(imageFor(selected.id), isMobile ? 320 : 480, selected.title)}
-            {canSeeHighlight
-              ? <CodexDiff before={bodyFor(testEditBeforeId)} after={bodyFor(selected.id)} />
-              : <CodexBody body={bodyFor(revealed ? selected.id : testEditBeforeId)} isMobile={isMobile} />}
+            <CodexBody body={bodyFor(selected.id)} isMobile={isMobile} />
             {/* A signed-in player can propose a change to this live entry; the GM
                 reviews it before it goes live, same as a new-entry submission. */}
             {canSubmit && !pending && (myPendingEdit ? (

@@ -490,7 +490,7 @@ export function decodeV2Fleets(rawFleetsNode) {
 // everyone. One path in means the lock cannot be left behind.
 export const emptySector = () =>
   COLLECTIONS.reduce((acc, c) => ({ ...acc, [c]: [] }),
-    { lockCode: "", fleetsPublic: true, turnNumber: 0, globalExperimentalEditing: false });
+    { lockCode: "", fleetsPublic: true, turnNumber: 0 });
 
 function deepEqual(a, b) {
   if (a === b) return true;
@@ -555,12 +555,6 @@ export function buildSectorUpdates(prev, next) {
   const turnBefore = p.turnNumber || 0;
   const turnAfter = n.turnNumber || 0;
   if (turnBefore !== turnAfter) updates["turn/number"] = turnAfter;
-  // Global Experimental Editing — same own-node reasoning as lockCode
-  // above. When on, every player sees the Experimental Editing controls and
-  // highlight on every article, regardless of that entry's own testEditRoles.
-  const globalTestEditBefore = !!p.globalExperimentalEditing;
-  const globalTestEditAfter = !!n.globalExperimentalEditing;
-  if (globalTestEditBefore !== globalTestEditAfter) updates["access/globalExperimentalEditing"] = globalTestEditAfter;
   return updates;
 }
 

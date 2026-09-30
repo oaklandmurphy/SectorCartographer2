@@ -93,9 +93,6 @@ function readAccess(data, raw) {
   data.lockCode = (raw.access && typeof raw.access.lockCode === "string") ? raw.access.lockCode : "";
   // Fleet positions are public unless the GM has explicitly switched that off.
   data.fleetsPublic = !(raw.access && raw.access.fleetsPublic === false);
-  // Global Experimental Editing is off unless the GM has switched it on — see
-  // sectorSchema.js's buildSectorUpdates for why it rides this same node.
-  data.globalExperimentalEditing = !!(raw.access && raw.access.globalExperimentalEditing === true);
 }
 
 // The GM's turn counter, bumped by nextTurn() in App.jsx and stamped onto

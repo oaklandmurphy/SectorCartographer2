@@ -107,7 +107,6 @@ function buildNarrativePrompt(turn, items) {
 // A modifier's point value is situational (the same modifier might swing +1 one
 // week and +2 the next), so it's typed in at the moment of use, not stored.
 export default function GMToolsView({ roles, factions, modifiers, notes, isMobile, addNote, removeNote,
-  wiki, globalExperimentalEditing, toggleGlobalExperimentalEditing, endExperimentalMode,
   actions, archivedActions, agents, systems, links, resolveAction, reopenAction, removeAction, removeArchivedAction,
   loadOlderArchiveTurn, canLoadOlderArchive,
   editActionResolution, editArchivedActionResolution, setActionImportant, setArchivedActionImportant,
@@ -1109,52 +1108,7 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
     );
   };
 
-  // Experimental Editing: the GM's global switch (every player gets the button
-  // on every article) and the kill switch that swaps each experimentally-edited
-  // article back to its original text.
-  const experimentalPane = () => (
-    <div>
-      <div style={{ background: T.panel, border: `1px solid ${globalExperimentalEditing ? T.accent : T.line}`, ...cut(10),
-        padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-        <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text,
-          display: "flex", alignItems: "center", gap: 7 }}>
-          <Wand2 size={15} color={T.accent} /> EXPERIMENTAL EDITING: GLOBAL ACCESS
-        </div>
-        <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
-          Gives every player Experimental Editing on every codex article, overriding each entry's own
-          "Experimental Editing revealed to" list: they see the button when proposing a change, and see the
-          highlighted (green/red) change on any article published that way. Switching this off returns each
-          article to its own per-entry, per-player reveal list.
-        </div>
-        <button type="button" onClick={() => toggleGlobalExperimentalEditing(!globalExperimentalEditing)}
-          title={globalExperimentalEditing ? "On for every player. Click to go back to per-article reveals" : "Turn on Experimental Editing for every player, on every article"}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", alignSelf: "flex-start",
-            border: `1px solid ${globalExperimentalEditing ? T.accent : T.line}`, borderRadius: 2, padding: "6px 10px",
-            background: globalExperimentalEditing ? "rgba(159,194,58,.14)" : T.panel3, color: globalExperimentalEditing ? T.accent : T.faint,
-            fontFamily: F.body, fontSize: 11.5, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase" }}>
-          <Wand2 size={12} /> {globalExperimentalEditing ? "On for everyone. Restore per-article reveals" : "Turn on for everyone"}
-        </button>
-      </div>
-      <div style={{ background: T.panel, border: `1px solid ${T.line}`, ...cut(10),
-        padding: isMobile ? 12 : 16, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text }}>END EXPERIMENTAL EDITING</div>
-        <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
-          Turns global access off and swaps every experimentally-edited article back to its original text, keeping the
-          new version stashed so nothing is lost.
-        </div>
-        <Btn kind="danger" style={{ alignSelf: "flex-start" }}
-          onClick={async () => { if (await confirm("End Experimental Editing? Edited articles revert to their original text.")) endExperimentalMode(); }}>
-          End Experimental Editing
-        </Btn>
-      </div>
-    </div>
-  );
-
-  // The section switch: agent actions vs. squadron missions vs. narrative
-  // prompt vs. resource transactions. Each owns its own content; Notes stays
-  // shared underneath either one. Six entries is too many to cram into one
-  // row on a phone (even icon-only), so mobile collapses it into the same
-  // trigger + dropdown pattern as the player/faction rails below.
+  // The section switch: each owns its own content; Notes stays shared underneath.
   const SECTIONS = [
     { id: "actions", label: "Agent Actions", icon: ClipboardList, title: "Agent action requests", badge: pendingTotal },
     { id: "missions", label: "Squadron Missions", icon: Rocket, title: "Squadron mission requests", badge: pendingMissionTotal },
@@ -1163,7 +1117,6 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
     { id: "narrative", label: "Narrative", icon: Sparkles, title: "Generate a narration prompt from last turn's important events", badge: importantLastTurn.length },
     { id: "recap", label: "Recap", icon: Newspaper, title: "Bundle resolved actions and missions into a Discord post for players", badge: resolvedActionsTotal + resolvedMissionsTotal },
     { id: "transactions", label: "Transactions", icon: ArrowLeftRight, title: "Resource transfers between factions, and to the GM", badge: 0 },
-    { id: "experimental", label: "Experimental", icon: Wand2, title: "Global Experimental Editing access, and ending it", badge: 0 },
   ];
   const activeSection = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
 
@@ -1345,8 +1298,6 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
           recapPane()
         ) : section === "transactions" ? (
           transactionsPane()
-        ) : section === "experimental" ? (
-          experimentalPane()
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
@@ -1443,17 +1394,6 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
         {turnBar()}
         <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 18, maxWidth: 700 }}>
           {transactionsPane()}
-        </div>
-      </div>
-    );
-  }
-  if (section === "experimental") {
-    return (
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: T.void }}>
-        {sectionBar()}
-        {turnBar()}
-        <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 18, maxWidth: 700 }}>
-          {experimentalPane()}
         </div>
       </div>
     );

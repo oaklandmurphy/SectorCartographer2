@@ -5,7 +5,6 @@ import { WIKI_CATS } from "../constants.js";
 import Btn from "./ui/Btn.jsx";
 import CodexBody from "./CodexBody.jsx";
 import BoardSnapshotModal from "./BoardSnapshotModal.jsx";
-import { revealsExperimentalEdit } from "../lib/experimentalReveal.js";
 
 // The article date the timeline sorts and buckets on: when the page was
 // published (publishedAt) — the moment it became a real article — falling back
@@ -41,12 +40,8 @@ function fromLocalInput(v) {
 // (stamped by Next Turn, adjustable here by the GM). News only by default, with
 // a toggle for every category. Clicking a box opens its article inline below the
 // strip rather than leaving for the Codex.
-export default function TimelineView({ wiki, factions, threads = [], addThread, patchThread, removeThread, turns, turnNumber, isGM, isMobile, goToCodex, setTurnStart, setTurnName, loadImage, loadBody, loadSnapshot, viewer, globalExperimentalEditing }) {
-  // An article under active Experimental Editing shows its old (pre-edit) title/
-  // excerpt/body here unless this viewer has actually been revealed the change —
-  // same rule as the Codex itself; see lib/experimentalReveal.js.
-  const revealed = (e) => revealsExperimentalEdit(e, { isGM, viewer, globalExperimentalEditing });
-  const titleOf = (e) => (revealed(e) ? e.title : (e.testEditBeforeTitle || e.title));
+export default function TimelineView({ wiki, factions, threads = [], addThread, patchThread, removeThread, turns, turnNumber, isGM, isMobile, goToCodex, setTurnStart, setTurnName, loadImage, loadBody, loadSnapshot }) {
+  const titleOf = (e) => e.title;
   const [showAll, setShowAll] = useState(false);
   const [selectedId, setSelectedId] = useState(null); // article shown in the reader below
   const [editingTurn, setEditingTurn] = useState(null); // turn number the GM is editing (start time + name)
@@ -318,10 +313,8 @@ export default function TimelineView({ wiki, factions, threads = [], addThread, 
 
   // Same idea for the article's full text — see sectorSchema.js's wiki codec
   // comment: only `excerpt` (used in the strip cards above) rides the live
-  // wiki listener now, so the reader below fetches the real body itself. An
-  // entry under active Experimental Editing that this viewer isn't revealed
-  // fetches its stashed old body instead of the live (new) one — see `revealed`.
-  const selectedBodyId = selected && selected.testEditCanon && !revealed(selected) ? `${selected.id}__testEditBefore` : selectedId;
+  // wiki listener now, so the reader below fetches the real body itself.
+  const selectedBodyId = selectedId;
   const [bodyCache, setBodyCache] = useState({});
   useEffect(() => {
     if (!selectedBodyId || selectedBodyId in bodyCache) return;

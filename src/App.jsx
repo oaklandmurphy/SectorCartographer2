@@ -112,7 +112,6 @@ export default function GalaxySectorMap() {
 
   const [lockCode, setLockCode] = useState("");   // shared: "" means editing is open to everyone; else the GM code
   const [fleetsPublic, setFleetsPublic] = useState(true); // shared: false hides fleet positions from anyone without a matching login
-  const [globalExperimentalEditing, setGlobalExperimentalEditing] = useState(false); // shared: GM switch — when on, every player gets Experimental Editing on every article, regardless of that entry's own testEditRoles
   const [turnNumber, setTurnNumber] = useState(0); // shared: bumped by nextTurn(), stamped onto actions as they're archived — the campaign starts at turn 0
   const [turns, setTurns] = useState([]); // shared: turn-boundary records { turn, startedAt, name } — when each turn began (stamped by nextTurn(), editable by the GM on the Timeline tab) and the GM's optional name for it
   const [turnSnapshots, setTurnSnapshots] = useState([]); // shared: one frozen board-state record per closed-out turn (stamped by nextTurn(), or backfilled from a GM export) — see lib/turnSnapshot.js
@@ -175,8 +174,8 @@ export default function GalaxySectorMap() {
   // and now also `wiki` and `art` (see the wiki/art load-and-autosave block
   // further down), pulled off the hot root listener for the same reason.
   const sector = useMemo(
-    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber, globalExperimentalEditing }),
-    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber, globalExperimentalEditing],
+    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber }),
+    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber],
   );
   // The sector as the database currently has it. Null until the load below fills
   // it in, which is also what stops an autosave from firing against an empty
@@ -230,7 +229,6 @@ export default function GalaxySectorMap() {
       setTurns(data.turns); setThreads(data.threads); setEndTurnChecks(data.endTurnChecks);
       setLockCode(data.lockCode); setFleetsPublic(data.fleetsPublic !== false);
       setTurnNumber(data.turnNumber || 0);
-      setGlobalExperimentalEditing(!!data.globalExperimentalEditing);
     };
     const unsub = subscribeSector(
       ({ data, schema }) => {
@@ -349,52 +347,6 @@ export default function GalaxySectorMap() {
   function toggleFleetsPublic(next) {
     if (!canEdit) return;
     setFleetsPublic(next);
-  }
-  // GM switch: true reveals Experimental Editing to every player on every
-  // article, overriding each entry's own testEditRoles list — shared
-  // like fleetsPublic, not personal UI state.
-  function toggleGlobalExperimentalEditing(next) {
-    if (!canEdit) return;
-    setGlobalExperimentalEditing(next);
-  }
-  // GM: the kill switch for the whole Experimental Editing gimmick (Experimental
-  // Mode tab). Every codex article currently live as a highlighted (green/red)
-  // change goes back to showing its pre-edit title/excerpt/body as plain canon —
-  // narratively, the edits never happened — Experimental Editing stops being
-  // offered to any player (globalExperimentalEditing off), and each article's
-  // own reveal list is cleared so it doesn't quietly resurface later. Fires
-  // purely on the GM's say-so: the player vote tally on that tab is advisory,
-  // never a gate here.
-  //
-  // Non-destructive: the "new" (experimental) title/excerpt/body isn't
-  // discarded, just swapped into the same testEditBefore* slots (and, for the
-  // body, the `${id}__testEditBefore` stash) the pre-edit text used to live at
-  // — nothing here ever deletes anything, only moves which side is live.
-  // WikiView, the codex list and the Timeline all stop reading that stash once
-  // testEditCanon is false, so it won't resurface on its own, but it's still
-  // sitting in the database if this article's history is ever needed.
-  async function endExperimentalMode() {
-    if (!canEdit) return;
-    const affected = wiki.filter((e) => e.testEditCanon);
-    const [oldBodies, newBodies] = await Promise.all([
-      Promise.all(affected.map((e) => loadWikiBody(`${e.id}__testEditBefore`))),
-      Promise.all(affected.map((e) => loadWikiBody(e.id))),
-    ]).catch((err) => { console.warn("[wiki] could not load bodies to end Experimental Mode", err); return [null, null]; });
-    const now = Date.now();
-    setWiki((w) => w.map((e) => {
-      const a = affected.find((x) => x.id === e.id);
-      if (!a) return e;
-      return { ...e, title: a.testEditBeforeTitle || e.title, testEditBeforeTitle: a.title,
-        excerpt: a.testEditBeforeExcerpt !== undefined ? a.testEditBeforeExcerpt : e.excerpt, testEditBeforeExcerpt: a.excerpt,
-        testEditCanon: false, testEditRoles: undefined, updatedAt: now };
-    }));
-    setGlobalExperimentalEditing(false);
-    if (oldBodies && newBodies) {
-      await Promise.all(affected.flatMap((e, i) => [
-        saveWikiBody(e.id, oldBodies[i]),
-        saveWikiBody(`${e.id}__testEditBefore`, newBodies[i]),
-      ])).catch((err) => console.warn("[wiki] could not swap experimental bodies while ending Experimental Mode", err));
-    }
   }
   // Accepts either the GM code or any player role's code.
   async function tryUnlock(code) {
@@ -2193,17 +2145,7 @@ export default function GalaxySectorMap() {
         return;
       }
       const patch = { title: e.title, excerpt: e.excerpt, category: e.category, updatedAt: Date.now(),
-        factionId: e.factionId !== undefined ? e.factionId : target.factionId,
-        // A proposal the player ran Experimental Editing on publishes with its change
-        // highlighted (green/red) as the live entry's actual content, in place
-        // of the plain merged text — testEditBeforeTitle is the pre-edit title
-        // that highlight is drawn against (the body's counterpart is stashed
-        // separately below, body text being too large for the wiki collection
-        // itself — see sectorSchema.js). Reset on every approval, not sticky:
-        // this reflects whether *this* published change was test-edited, not
-        // whether some earlier one on the same page was.
-        testEditCanon: !!e.testEdited, testEditBeforeTitle: e.testEdited ? target.title : undefined,
-        testEditBeforeExcerpt: e.testEdited ? target.excerpt : undefined };
+        factionId: e.factionId !== undefined ? e.factionId : target.factionId };
       setWiki((w) => w
         .map((x) => (x.id === e.editOf ? { ...x, ...patch } : x))
         .filter((x) => x.id !== id));
@@ -2213,20 +2155,16 @@ export default function GalaxySectorMap() {
       // Whatever image the proposal ended up with (including none) replaces the
       // live entry's — same "approving applies the proposal wholesale" rule the
       // rest of `patch` follows, just off its own path (see lib/codexImage.js).
-      // Same for the body, plus (for a Test-Edited proposal) stashing the live
-      // entry's pre-edit body at a derived id so the highlighted diff above can
-      // still render it correctly after this proposal itself is gone — cleared
-      // back to nothing when this approval wasn't test-edited. Awaited (rather
+      // Same for the body. Awaited (rather
       // than fired in the background) so the caller can invalidate WikiView's
       // own body/image cache for e.editOf only once these writes have actually
       // landed — otherwise the GM's already-open (pre-approval) cache entry for
       // that id never gets a reason to refetch and keeps showing the old text.
-      const [img, newText, oldText] = await Promise.all([loadWikiImage(id), loadWikiBody(id), loadWikiBody(e.editOf)])
-        .catch((err) => { console.warn("[wiki] could not load the proposal's image/body for approval", err); return [null, "", ""]; });
+      const [img, newText] = await Promise.all([loadWikiImage(id), loadWikiBody(id)])
+        .catch((err) => { console.warn("[wiki] could not load the proposal's image/body for approval", err); return [null, ""]; });
       await Promise.all([
         saveWikiImage(e.editOf, img),
         saveWikiBody(e.editOf, newText),
-        saveWikiBody(`${e.editOf}__testEditBefore`, e.testEdited ? oldText : null),
       ]).catch((err) => console.warn("[wiki] could not carry the approved image/body onto the live entry", err));
       return;
     }
@@ -3148,7 +3086,6 @@ export default function GalaxySectorMap() {
             proposeEdit={proposeWikiEdit}
             loadImage={loadWikiImage} saveImage={saveWikiImage}
             loadBody={loadWikiBody} saveBody={saveWikiBody} loadAllBodies={loadAllWikiBodies}
-            globalExperimentalEditing={globalExperimentalEditing}
           />
         )}
 
@@ -3158,13 +3095,11 @@ export default function GalaxySectorMap() {
             threads={threads} addThread={addThread} patchThread={patchThread} removeThread={removeThread}
             isGM={isGM} isMobile={isMobile} goToCodex={goToCodex} setTurnStart={setTurnStart} setTurnName={setTurnName}
             loadImage={loadWikiImage} loadBody={loadWikiBody} loadSnapshot={loadSnapshotForTurn}
-            viewer={viewer} globalExperimentalEditing={globalExperimentalEditing}
           />
         )}
 
         {activeTab === "updates" && (
           <UpdatesView articles={unseenArticles} factionName={currentFaction && currentFaction.name} isMobile={isMobile}
-            isGM={isGM} viewer={viewer} globalExperimentalEditing={globalExperimentalEditing}
             openArticle={goToCodex} acknowledgeArticle={markWikiSeen} acknowledgeAll={acknowledgeAllUpdates}
             resolvedActions={unseenResolvedActions} openAction={goToAgentAction}
             acknowledgeAction={markActionSeen} acknowledgeAllActions={acknowledgeAllActionUpdates}
@@ -3231,8 +3166,6 @@ export default function GalaxySectorMap() {
             roles={roles} factions={factions} modifiers={modifiers} notes={notes} isMobile={isMobile}
             resourceTransactions={resourceTransactions} removeResourceTransaction={removeResourceTransaction}
             addNote={addNote} removeNote={removeNote}
-            wiki={wiki} globalExperimentalEditing={globalExperimentalEditing} toggleGlobalExperimentalEditing={toggleGlobalExperimentalEditing}
-            endExperimentalMode={endExperimentalMode}
             actions={actions} archivedActions={archivedActions} agents={agents} systems={systems} links={links}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
             resolveAction={resolveAction} reopenAction={reopenAction} removeAction={removeAction}

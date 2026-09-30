@@ -1,7 +1,6 @@
 import { Bell, Check, CheckCheck, Clock, FileText, VenetianMask, Ship, PackagePlus } from "lucide-react";
 import { T } from "../theme.js";
 import Btn from "./ui/Btn.jsx";
-import { revealsExperimentalEdit } from "../lib/experimentalReveal.js";
 
 const dateTime = (value) => value ? new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium", timeStyle: "short",
@@ -50,16 +49,11 @@ function SectionHeader({ icon, label, count, isMobile, onAcknowledgeAll }) {
 
 export default function UpdatesView({
   articles, factionName, isMobile, openArticle, acknowledgeArticle, acknowledgeAll,
-  isGM, viewer, globalExperimentalEditing,
   resolvedActions, openAction, acknowledgeAction, acknowledgeAllActions,
   resolvedMissions, openMission, acknowledgeMission, acknowledgeAllMissions,
   replenishments, openReplenishment, acknowledgeReplenishment, acknowledgeAllReplenishments,
 }) {
-  // An article notifying a non-revealed viewer while under active Experimental
-  // Editing announces itself under its old (pre-edit) title — same rule as the
-  // Codex and Timeline; see lib/experimentalReveal.js.
-  const titleOf = (a) => (revealsExperimentalEdit(a, { isGM, viewer, globalExperimentalEditing })
-    ? a.title : (a.testEditBeforeTitle || a.title));
+  const titleOf = (a) => a.title;
   const actions = resolvedActions || [];
   const missions = resolvedMissions || [];
   const replen = replenishments || [];
