@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Archive, VenetianMask, Ship, Swords, Check, Clock, History, Flag, Filter, ExternalLink, Inbox } from "lucide-react";
 import { T, F, lbl, selStyle } from "../theme.js";
+import { armyCategoryLabel } from "../lib/armyOrderCategories.js";
 import Btn from "./ui/Btn.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
 import MissionResolution from "./ui/MissionResolution.jsx";
@@ -74,7 +75,7 @@ export default function ActionArchiveView({
       issuerType: m.armyId ? "army" : "fleet", issuerId: m.armyId || m.fleetId,
       issuerLabel: m.armyId ? armyLabel(m.armyId) : fleetLabel(m.fleetId),
       status: m.status, resolution: m.resolution, text: m.text,
-      detachments: m.detachments || [],
+      detachments: m.detachments || [], category: m.category,
       createdAt: m.createdAt || 0, resolvedAt: m.resolvedAt || 0,
     });
     (actions || []).forEach((a) => pushAction(a, curTurn));
@@ -175,6 +176,9 @@ export default function ActionArchiveView({
           )}
           {!isAction && it.detachments.length > 0 && (
             <span className="mono" style={{ fontSize: 10.5, color: T.mut }}>{detachmentSummary(it)}</span>
+          )}
+          {!isAction && armyCategoryLabel(it.category) && (
+            <span className="mono" style={{ fontSize: 10.5, color: T.accent }}>{armyCategoryLabel(it.category)}</span>
           )}
           <span style={{ marginLeft: "auto", fontSize: 9.5, color: T.faint }}>
             {fmtDateTime(it.createdAt)}

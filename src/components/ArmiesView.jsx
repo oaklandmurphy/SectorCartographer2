@@ -4,6 +4,7 @@ import { T, F, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
+import { armyCategoryLabel } from "../lib/armyOrderCategories.js";
 import SquadronOrderModal from "./SquadronOrderModal.jsx";
 import MissionResolution from "./ui/MissionResolution.jsx";
 
@@ -250,6 +251,9 @@ export default function ArmiesView({
             {resolved ? <Check size={11} /> : <Clock size={11} />}{resolved ? "Resolved" : "Under orders"}
           </span>
           <span className="mono" style={{ fontSize: 10.5, color: T.mut }}>{detachmentSummary(m)}</span>
+          {armyCategoryLabel(m.category) && (
+            <span className="mono" style={{ fontSize: 10.5, color: T.accent }}>{armyCategoryLabel(m.category)}</span>
+          )}
         </div>
         <div style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 1.65, color: T.text, whiteSpace: "pre-wrap",
           borderLeft: `2px solid ${T.accent}`, paddingLeft: 12 }}>{m.text}</div>
@@ -385,7 +389,7 @@ export default function ArmiesView({
       {orderArmy && (
         <SquadronOrderModal army={orderArmy} isMobile={isMobile}
           onClose={() => setOrderArmyId(null)}
-          onSubmit={(detachments, text) => { submitArmyMission(orderArmy.id, detachments, text); setOrderArmyId(null); }} />
+          onSubmit={(detachments, text, spec) => { submitArmyMission(orderArmy.id, detachments, text, spec); setOrderArmyId(null); }} />
       )}
       {!army ? (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center",

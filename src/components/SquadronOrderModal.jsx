@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { X, Rocket, Swords, Send, TriangleAlert } from "lucide-react";
-import { T, F, panelStyle, inputStyle, lbl, cut } from "../theme.js";
+import { T, F, panelStyle, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { squadronsOf } from "../lib/carriers.js";
+import { ARMY_ORDER_CATEGORIES } from "../lib/armyOrderCategories.js";
 import { useDraft } from "../hooks/useDraft.js";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
@@ -24,11 +25,14 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
   // Kept in localStorage (keyed per fleet) so a half-written order survives
   // closing this modal to check something else, or FleetView unmounting
   // entirely from a tab switch — cleared only once the order actually submits.
-  const [draft, setDraft, clearDraft] = useDraft(`galaxy-sector-draft-${isArmy ? "army" : "squadron"}-order:${unit.id}:v1`, { counts: {}, text: "" });
+  const [draft, setDraft, clearDraft] = useDraft(`galaxy-sector-draft-${isArmy ? "army" : "squadron"}-order:${unit.id}:v1`, { counts: {}, text: "", category: "" });
   const counts = draft.counts; // squadronId -> typed text
   const text = draft.text;
   const setCounts = (next) => setDraft((d) => ({ ...d, counts: typeof next === "function" ? next(d.counts) : next }));
   const setText = (v) => setDraft((d) => ({ ...d, text: v }));
+  // Army orders must be filed under a category; squadron orders have none.
+  const category = ARMY_ORDER_CATEGORIES.some((c) => c.id === draft.category) ? draft.category : "";
+  const setCategory = (v) => setDraft((d) => ({ ...d, category: v }));
 
   // Every squadron across the fleet's carriers that has craft available right
   // now — one with nothing left in it (already fully committed elsewhere) has
@@ -53,17 +57,18 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
 
   const commitFor = (row) => Math.min(row.avail, Math.max(0, Math.floor(Number(counts[row.squadronId]) || 0)));
   const total = rows.reduce((n, r) => n + commitFor(r), 0);
+  const ready = !!text.trim() && total > 0 && (!isArmy || !!category);
 
   const setCount = (squadronId, v) => setCounts((c) => ({ ...c, [squadronId]: v }));
   const setAll = (row) => setCount(row.squadronId, String(row.avail));
   const setNone = (row) => setCount(row.squadronId, "0");
 
   const submit = () => {
-    if (!text.trim() || total === 0) return;
+    if (!ready) return;
     const detachments = rows
       .map((r) => ({ shipId: r.shipId, squadronId: r.squadronId, model: r.model, count: commitFor(r) }))
       .filter((d) => d.count > 0);
-    onSubmit(detachments, text);
+    onSubmit(detachments, text, isArmy ? { category } : undefined);
     clearDraft();
   };
 
@@ -130,6 +135,16 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
             })}
           </div>
 
+          {isArmy && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={lbl}>Category</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} style={selStyle}>
+                <option value="">Select category…</option>
+                {ARMY_ORDER_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={lbl}>Mission</span>
             <AutoTextarea value={text} onChange={(e) => setText(e.target.value)} autoFocus
@@ -156,8 +171,8 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             <Btn onClick={onClose}>Cancel</Btn>
-            <Btn kind="primary" onClick={submit} disabled={!text.trim() || total === 0}
-              title={total === 0 ? `Commit at least one ${noun}` : !text.trim() ? "Describe the mission first" : "Send this order to the GM"}>
+            <Btn kind="primary" onClick={submit} disabled={!ready}
+              title={total === 0 ? `Commit at least one ${noun}` : isArmy && !category ? "Choose a category" : !text.trim() ? "Describe the mission first" : "Send this order to the GM"}>
               <Send size={13} /> Submit
             </Btn>
           </div>

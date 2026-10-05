@@ -8,6 +8,7 @@ import {
 } from "../lib/missionOdds.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import { readDraft, writeDraft } from "../hooks/useDraft.js";
+import { armyCategoryLabel } from "../lib/armyOrderCategories.js";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
 import MissionResolution from "./ui/MissionResolution.jsx";
@@ -338,6 +339,9 @@ export default function SquadronMissionsPanel({
         </div>
 
         <div className="mono" style={{ fontSize: 11, color: T.mut }}>{detachmentSummary(m)}</div>
+        {armyCategoryLabel(m.category) && (
+          <div className="mono" style={{ fontSize: 11, color: T.accent }}>{armyCategoryLabel(m.category)}</div>
+        )}
         <div style={{ fontSize: 9.5, color: T.faint }}>
           {m.createdAt ? new Date(m.createdAt).toLocaleString() : ""}
         </div>

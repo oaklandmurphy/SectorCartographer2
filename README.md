@@ -24,7 +24,7 @@ Six views, switched from the toolbar and each with its own URL:
   piece parked at a system on the map, holding a roster of divisions (the ground
   twin of a carrier's squadrons). The GM creates armies, places them and assigns
   divisions; a faction's players rename their own armies, send them Army orders
-  (the ground twin of a squadron order: commit divisions to a free-text order
+  (the ground twin of a squadron order: commit divisions to a categorized, free-text order
   the GM resolves on the mission odds table, survivors returning to the army)
   and plot move orders on the map.
   Armies are visible to their own faction and its allies/vassals, but only the

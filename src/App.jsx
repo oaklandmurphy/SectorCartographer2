@@ -13,6 +13,7 @@ import {
 import { buildSectorUpdates, buildCollectionUpdates, buildGroupUpdates, buildReadsUpdates, ARCHIVE_COLLECTIONS, SNAPSHOT_COLLECTIONS, READ_COLLECTIONS } from "./lib/sectorSchema.js";
 import { resolveViewer, canSee, canSeeSubmission, visibleFleets, friendlyFactionIds, visibleAgents, visibleArmies, visibleOrders, visibleActions, visibleMissions } from "./lib/visibility.js";
 import { craftInCarrier, withSquadrons, squadronsOf, commitDetachments, returnDetachments, survivingDetachments, incomingCraft, commitArmyDivisions, returnArmyDivisions } from "./lib/carriers.js";
+import { ARMY_ORDER_CATEGORIES } from "./lib/armyOrderCategories.js";
 import { moveShips, moveSquadron, moveVessel, disbandEmptyFleets, spawnFleet } from "./lib/fleets.js";
 import { effectiveMoveOrders } from "./lib/movement.js";
 import { eligibleSystemFor, systemCap, systemStagedTotal, adjustLine, applyReplenishments, replenishmentSummary } from "./lib/replenish.js";
@@ -1813,11 +1814,13 @@ export default function GalaxySectorMap() {
   // An Army order: the ground twin of a squadron order. A player commits
   // divisions (whole or part) from one army to a free-text order for the GM to
   // adjudicate on the mission odds table; same lock-in rules as submitMission.
-  function submitArmyMission(armyId, detachments, text) {
+  function submitArmyMission(armyId, detachments, text, spec) {
     const army = armies.find((r) => r.id === armyId);
     if (!army || !canOrderFor(army.factionId)) return;
     const body = (text || "").trim();
     if (!body) return;
+    const category = spec && ARMY_ORDER_CATEGORIES.some((c) => c.id === spec.category) ? spec.category : null;
+    if (!category) return;
     const clean = (detachments || []).map((d) => {
       const div = (army.divisions || []).find((x) => x.id === d.squadronId);
       if (!div) return null;
@@ -1827,7 +1830,7 @@ export default function GalaxySectorMap() {
     if (clean.length === 0) return;
     setArmies((rs) => commitArmyDivisions(rs, armyId, clean));
     setMissions((ms) => [...ms, {
-      id: uid("msn"), factionId: army.factionId, armyId, text: body,
+      id: uid("msn"), factionId: army.factionId, armyId, text: body, category,
       detachments: clean, status: "pending", resolution: null,
       createdBy: viewer.roleId ? { roleId: viewer.roleId, roleName: viewer.roleName } : null,
       createdAt: Date.now(), resolvedAt: null,
