@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Rocket, Trash2, Dices, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6,
-  Users, Check, Clock, Wand2, Ship, Pencil, X, Zap, History } from "lucide-react";
+  Users, Check, Clock, Wand2, Ship, Swords, Pencil, X, Zap, History } from "lucide-react";
 import { T, F, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import {
   RATIO_COLS, EVEN_RATIO_INDEX, MIN_SHIFT, MAX_SHIFT,
@@ -8,6 +8,7 @@ import {
 } from "../lib/missionOdds.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import { readDraft, writeDraft } from "../hooks/useDraft.js";
+import { armyCategoryLabel } from "../lib/armyOrderCategories.js";
 import { missionTargetLine } from "../lib/missionTypes.js";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
@@ -76,7 +77,7 @@ function MissionResolutionWithEdit({ mission, editResolution }) {
 // a delayed mission before then is the only way to get its craft back early
 // (see removeMission).
 export default function SquadronMissionsPanel({
-  roles, factions, fleets, missions, archivedMissions, isMobile, resolveMission, removeMission,
+  roles, factions, fleets, armies, missions, archivedMissions, isMobile, resolveMission, removeMission,
   removeArchivedMission, editMissionResolutionText, notesPane,
   loadOlderArchiveTurn, canLoadOlderArchive,
 }) {
@@ -99,8 +100,12 @@ export default function SquadronMissionsPanel({
   const targetMission = targetId ? (missions || []).find((m) => m.id === targetId) : null;
   const mine = targetMission ? totalCraft(targetMission) : 0;
   const targetFleet = targetMission ? (fleets || []).find((f) => f.id === targetMission.fleetId) : null;
-  const shipNameFor = (shipId) =>
-    ((targetFleet && targetFleet.ships.find((s) => s.id === shipId)) || {}).name || "Unknown ship";
+  const targetArmy = targetMission && targetMission.armyId ? (armies || []).find((r) => r.id === targetMission.armyId) : null;
+  // An army order's detachments carry the army's id as `shipId` (see App.jsx's
+  // submitArmyMission), so the "ship" a loss row names is the army itself.
+  const shipNameFor = (shipId) => (targetMission && targetMission.armyId
+    ? (targetArmy ? targetArmy.name : "Army (removed)")
+    : ((targetFleet && targetFleet.ships.find((s) => s.id === shipId)) || {}).name || "Unknown ship");
 
   const [theirsText, setTheirsText] = useState("10");
   const [ratioIdx, setRatioIdx] = useState(EVEN_RATIO_INDEX);
@@ -305,6 +310,7 @@ export default function SquadronMissionsPanel({
   const renderCard = (m) => {
     const fac = factions.find((f) => f.id === m.factionId) || null;
     const fleet = (fleets || []).find((f) => f.id === m.fleetId) || null;
+    const army = m.armyId ? (armies || []).find((r) => r.id === m.armyId) || null : null;
     const resolvedM = m.status === "resolved";
     // Ruled on with "delay resolution" checked (see App.jsx's resolveMission) —
     // has a resolution just like `resolvedM`, but the player still sees it as
@@ -319,7 +325,8 @@ export default function SquadronMissionsPanel({
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ width: 9, height: 9, borderRadius: "50%", background: color, flexShrink: 0 }} />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: T.mut }}>
-            <Ship size={12} /> {fleet ? fleet.name : "Fleet (removed)"}
+            {m.armyId ? <Swords size={12} /> : <Ship size={12} />}
+            {m.armyId ? (army ? army.name : "Army (removed)") : (fleet ? fleet.name : "Fleet (removed)")}
           </span>
           {m.archived && (
             <span className="mono" style={{ marginLeft: "auto", fontSize: 9, color: T.faint }}>Turn {m.turn}</span>
@@ -333,8 +340,9 @@ export default function SquadronMissionsPanel({
         </div>
 
         <div className="mono" style={{ fontSize: 11, color: T.mut }}>{detachmentSummary(m)}</div>
-        {missionTargetLine(m) && (
-          <div className="mono" style={{ fontSize: 11, color: T.accent }}>{missionTargetLine(m)}</div>
+        {(armyCategoryLabel(m.category) || missionTargetLine(m)) && (
+          <div className="mono" style={{ fontSize: 11, color: T.accent }}>{armyCategoryLabel(m.category) || missionTargetLine(m)}</div>
+        )}
         )}
         <div style={{ fontSize: 9.5, color: T.faint }}>
           {m.createdAt ? new Date(m.createdAt).toLocaleString() : ""}
@@ -396,7 +404,7 @@ export default function SquadronMissionsPanel({
       return (
         <div style={{ fontSize: 11.5, color: T.faint, padding: "16px 8px", textAlign: "center",
           border: `1px dashed ${T.line}`, lineHeight: 1.6 }}>
-          No squadron missions yet. Players raise them from a fleet's hangar on the Fleet tab.
+          No missions yet. Players raise squadron orders from the Fleet tab and army orders from the Armies tab.
         </div>
       );
     }
@@ -477,7 +485,7 @@ export default function SquadronMissionsPanel({
                 <div style={{ ...lbl, color: T.accent, marginBottom: 3 }}>Resolving mission</div>
                 <div style={{ fontSize: 12, color: T.text, lineHeight: 1.5 }}>{targetMission.text}</div>
                 <div className="mono" style={{ fontSize: 10.5, color: T.mut, marginTop: 3 }}>
-                  {mine} craft committed — {detachmentSummary(targetMission)}
+                  {mine} {targetMission.armyId ? "divisions" : "craft"} committed — {detachmentSummary(targetMission)}
                 </div>
               </div>
               <button onClick={() => { setTargetId(""); clearTool(); }} title="Detach from this mission"
@@ -487,10 +495,10 @@ export default function SquadronMissionsPanel({
             </div>
 
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-              {field("Your craft", (
+              {field(targetMission.armyId ? "Your divisions" : "Your craft", (
                 <div className="mono" style={{ ...inputStyle, width: 82, textAlign: "right", opacity: .85 }}>{mine}</div>
               ))}
-              {field("Enemy craft", (
+              {field(targetMission.armyId ? "Enemy divisions" : "Enemy craft", (
                 <input className="mono" type="number" step="1" min="0" value={theirsText} onChange={onTheirsChange}
                   style={{ ...inputStyle, width: 82, textAlign: "right" }} />
               ))}
@@ -553,7 +561,7 @@ export default function SquadronMissionsPanel({
             <div style={{ display: "flex", flexDirection: "column", gap: 8, background: T.panel2,
               border: `1px solid ${T.line}`, borderRadius: 2, padding: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={lbl}>Ship losses</span>
+                <span style={lbl}>{targetMission.armyId ? "Division losses" : "Ship losses"}</span>
                 <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: trackerColor }}>
                   {totalLoss}/{mine} lost · {actualPct}% (calc {cas}%, {sign(deviation)})
                 </span>
@@ -612,7 +620,7 @@ export default function SquadronMissionsPanel({
             </label>
 
             <Btn kind="primary" onClick={resolve} style={{ justifyContent: "center" }}>
-              <Check size={14} /> {delayResolution ? "Delay Resolution" : "Resolve & Return Craft"}
+              <Check size={14} /> {delayResolution ? "Delay Resolution" : "Resolve & Return Survivors"}
             </Btn>
             <Btn onClick={resolveAuto} style={{ justifyContent: "center" }}
               title="Skip the roll — rule this a clean win: 5/5 mission success and zero casualties">
@@ -630,7 +638,7 @@ export default function SquadronMissionsPanel({
         <div>
           <div className="stencil" style={{ fontSize: 16, letterSpacing: ".06em", color: T.text,
             display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-            <Rocket size={15} color={T.accent} /> SQUADRON MISSIONS {countBadge(pendingTotal, true)}
+            <Rocket size={15} color={T.accent} /> SQUADRON &amp; ARMY MISSIONS {countBadge(pendingTotal, true)}
           </div>
           {playerGroups.length > 0 && (
             <div style={{ marginBottom: 10 }}>

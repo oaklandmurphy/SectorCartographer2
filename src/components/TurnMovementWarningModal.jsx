@@ -4,6 +4,7 @@ import Btn from "./ui/Btn.jsx";
 
 function pieceLabel(v, factions) {
   if (v.pieceType === "fleet") return v.piece.name || "Unnamed fleet";
+  if (v.pieceType === "army") return v.piece.name || "Unnamed army";
   const fac = (factions || []).find((f) => f.id === v.piece.factionId);
   const member = fac && (fac.members || []).find((m) => m.id === v.piece.memberId);
   return member ? member.name : "Unassigned agent";
@@ -45,7 +46,7 @@ export default function TurnMovementWarningModal({ violations, factions, systems
             <div key={v.order.id} style={{ border: `1px solid ${T.amber}`, borderRadius: 2,
               background: "rgba(217,143,43,.08)", padding: "8px 10px" }}>
               <div style={{ fontSize: 12.5, color: T.text, fontWeight: 600, marginBottom: 3 }}>
-                {v.pieceType === "fleet" ? "Fleet" : "Agent"} — {pieceLabel(v, factions)}
+                {v.pieceType === "fleet" ? "Fleet" : v.pieceType === "army" ? "Army" : "Agent"} — {pieceLabel(v, factions)}
               </div>
               <div className="mono" style={{ fontSize: 10.5, color: T.faint, marginBottom: 5 }}>
                 {[nameOf(v.piece.systemId), ...v.order.path.map(nameOf)].join(" → ")}

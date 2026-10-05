@@ -4,13 +4,14 @@ import { T, cut, sceneBackdrop, floatingPanel } from "../theme.js";
 import { ICONS, OVERVIEW_ZOOM, DETAIL_ZOOM } from "../constants.js";
 import { craftInFleet } from "../lib/carriers.js";
 import { subregionCount, subregionKey, MAIN_R, RING_OUT } from "../lib/subregions.js";
-import { SystemPlate, SystemLabel, SubregionRing, FleetGlyph, AgentGlyph, LINK_LINE_PROPS } from "./ui/MapPieces.jsx";
+import { SystemPlate, SystemLabel, SubregionRing, FleetGlyph, AgentGlyph, ArmyGlyph, LINK_LINE_PROPS } from "./ui/MapPieces.jsx";
 import TargetBrackets from "./ui/TargetBrackets.jsx";
 import SystemGlow from "./ui/SystemGlow.jsx";
 import Starfield from "./ui/Starfield.jsx";
 import SystemPopup from "./SystemPopup.jsx";
 import FleetPopup from "./FleetPopup.jsx";
 import AgentPopup from "./AgentPopup.jsx";
+import ArmyPopup from "./ArmyPopup.jsx";
 import OrdersPanel from "./OrdersPanel.jsx";
 
 // Move-order routes are drawn in their faction's own color, lightened toward
@@ -29,18 +30,19 @@ export default function MapCanvas({
   mapRef, canvasRef, containerSize, isMobile,
   mode, canEdit, isGM, editLocked, view, w2s,
   systems, fleets, links, fleetPos,
-  agents, agentPos, orders, actions, showOrders, showFleets = true, showAgents = true,
+  agents, agentPos, armies, armyPos, orders, actions, showOrders, showFleets = true, showAgents = true, showArmies = true,
   factions, layers, factionById, layerById,
-  selSystem, selFleet, selAgent, linkSource, hoverFleet,
+  selSystem, selFleet, selAgent, selArmy, linkSource, hoverFleet,
   routing, routingOrder,
   onMapPointerDown, onMapDoubleClick,
   startPieceDrag, canvasDown, canvasMove, canvasUp,
-  onAgentTap, undoOrderStop, clearRoutingOrder, commitRoutingOrder, setRoutingNotes,
-  setSelSystem, setSelFleet, setSelAgent,
+  onAgentTap, onArmyTap, undoOrderStop, clearRoutingOrder, commitRoutingOrder, setRoutingNotes,
+  setSelSystem, setSelFleet, setSelAgent, setSelArmy,
   patchSystem, addMarker, patchMarker, removeMarker, deployFleetAt, deleteSystem,
   patchFleet, renameFleet, addShip, patchShip, removeShip, moveShip, deleteFleet, beginShipDrag,
   addSquadron, patchSquadron, removeSquadron, goToFleet, goToAgentAction, art,
   patchAgent, removeAgent, canManageAgents, canPlaceAgents, canOrderFor, submitMission,
+  patchArmy, renameArmy, removeArmy, goToArmy, orderArmyMove,
   wiki, roles, goToCodex, createEntry, openFleetTransfer,
   incoming, viewerFactionId,
 }) {
@@ -49,6 +51,7 @@ export default function MapCanvas({
   const selSystemObj = systems.find((s) => s.id === selSystem);
   const selFleetObj = fleets.find((f) => f.id === selFleet);
   const selAgentObj = (agents || []).find((a) => a.id === selAgent);
+  const selArmyObj = (armies || []).find((r) => r.id === selArmy);
 
   // While a fleet's popup is open: glow its home system and every system one
   // hyperlane hop away, so a player can see at a glance where it could move.
@@ -64,7 +67,8 @@ export default function MapCanvas({
   }, [selFleetObj, links, factionById]);
 
   // The map position a move order starts from — where its piece currently sits.
-  const pieceOrigin = (o) => (o.pieceType === "fleet" ? fleetPos[o.pieceId] : agentPos[o.pieceId]) || null;
+  const pieceOrigin = (o) => (o.pieceType === "fleet" ? fleetPos[o.pieceId]
+    : o.pieceType === "army" ? (armyPos || {})[o.pieceId] : agentPos[o.pieceId]) || null;
   const systemById = (id) => systems.find((s) => s.id === id);
   // The world-space polyline for an order: its piece's position, then each stop's
   // system center. Null if we can't anchor it (e.g. an unplaced agent).
@@ -106,7 +110,7 @@ export default function MapCanvas({
     groups.forEach((g) => g.ids.sort());
     return { groups, segKeysByOrder };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, fleetPos, agentPos, systems]);
+  }, [orders, fleetPos, agentPos, armyPos, systems]);
 
   return (
     <div ref={mapRef} style={{ ...sceneBackdrop, cursor: mode === "select" ? "grab" : "crosshair" }}>
@@ -154,6 +158,7 @@ export default function MapCanvas({
             const segKeys = orderPathGroups.segKeysByOrder.get(o.id) || [];
             const draft = !o.committed;
             const isAgent = o.pieceType === "agent";
+            const isArmy = o.pieceType === "army";
             const suggest = !!o.suggestion;
             // A suggestion is drawn in the *suggesting* faction's color (so its
             // author can pick out their own proposals), a plain order in the piece
@@ -194,6 +199,11 @@ export default function MapCanvas({
                         <polyline points="-3,-3.5 3.5,0 -3,3.5" fill="none" stroke={color}
                           strokeOpacity={draft ? 0.7 : 0.9} strokeWidth={1.4}
                           strokeLinecap="round" strokeLinejoin="round" transform={xf} />
+                      ) : isArmy ? (
+                        // army — a square block, so it reads apart from a fleet's
+                        // triangle and an agent's chevron
+                        <rect x="-4" y="-4" width="8" height="8" fill={color} fillOpacity={draft ? 0.85 : 1}
+                          stroke={T.ink} strokeWidth={0.7} strokeLinejoin="round" transform={xf} />
                       ) : suggest ? (
                         // suggested fleet move — a hollow triangle, so it reads as a
                         // proposal rather than the owner's own (filled) order
@@ -337,6 +347,39 @@ export default function MapCanvas({
         );
       })}
 
+      {/* armies — ground forces parked just below their system. Dragging is the
+          same single GM flag fleets use; everyone else just taps for the popup
+          or, in orders mode, to select the army for routing. Hidden when the
+          viewer toggles armies off, or zoomed out far enough that systems
+          collapse to plain markers. */}
+      {showArmies && !overview && (armies || []).map((r) => {
+        const pos = (armyPos || {})[r.id];
+        if (!pos) return null; // unplaced, or its system is gone — page-only
+        const p = w2s(pos.x, pos.y); const fac = factionById(r.factionId);
+        const isSel = r.id === selArmy;
+        const isRouting = routing && routing.type === "army" && routing.id === r.id;
+        const label = r.name && r.name.trim() ? r.name.trim() : "Army";
+        // Division counts are the owner's (and GM's) intel, same as a fleet's
+        // composition — a friendly viewer only gets the name.
+        const own = isGM || r.factionId === viewerFactionId;
+        const nDiv = (r.divisions || []).reduce((n, d) => n + (Number(d.count) || 0), 0);
+        const tip = own ? `${label} · ${nDiv} division${nDiv === 1 ? "" : "s"}` : label;
+        return (
+          <div key={r.id} data-piece="1" title={tip} className="piece-hover-zone"
+            onPointerDown={(e) => startPieceDrag(e, "army", r.id, pos.x, pos.y, r.systemId)}
+            onDoubleClick={(e) => e.stopPropagation()}
+            style={{ position: "absolute", left: p.x, top: p.y, transform: "translate(-50%,-50%)", touchAction: "none",
+              cursor: mode === "draw" ? "crosshair" : (canEdit ? "grab" : "pointer"),
+              zIndex: isSel || isRouting ? 24 : 17 }}>
+            <div className="piece-hover-target" style={{ position: "relative", width: 28, height: 28 }}>
+              {(isSel || isRouting) && <TargetBrackets color={isRouting ? T.amber : T.accent} inset={-6} armLen={8} thick={2} />}
+              <ArmyGlyph factionColor={fac.color} badge={own ? nDiv : null}
+                badgeTitle={own ? `${nDiv} division${nDiv === 1 ? "" : "s"}` : undefined} />
+            </div>
+          </div>
+        );
+      })}
+
       {/* agents — covert operatives parked at a system, only ever rendered for
           their own faction (the caller passes the already-filtered list). They
           fan out just below their system so they never sit under a fleet.
@@ -397,7 +440,7 @@ export default function MapCanvas({
         {mode === "select" && !canEdit && <span><b style={{ color: T.amber }}>View only</b> · click a system or fleet to see its details · drag empty space to pan · scroll to zoom · unlock editing from the toolbar{overview && <> · <b style={{ color: T.amber }}>zoomed out</b>, names & status icons hidden</>}</span>}
         {mode === "link" && <span><b style={{ color: T.amber }}>Link</b> · click one system, then another to connect or disconnect their hyperlane</span>}
         {mode === "draw" && <span><b style={{ color: T.accent }}>Draw</b> · sketch freely · pieces are locked · use Undo / Clear above</span>}
-        {mode === "orders" && <span><b style={{ color: T.amber }}>Orders</b> · click a fleet or agent you own, then click systems to plot its route · click an <b style={{ color: T.text }}>ally or vassal</b>'s fleet to <b style={{ color: T.text }}>suggest</b> a move for it · <b style={{ color: T.text }}>Submit</b> to signal the GM you're ready</span>}
+        {mode === "orders" && <span><b style={{ color: T.amber }}>Orders</b> · click a fleet, army or agent you own, then click systems to plot its route · click an <b style={{ color: T.text }}>ally or vassal</b>'s fleet to <b style={{ color: T.text }}>suggest</b> a move for it · <b style={{ color: T.text }}>Submit</b> to signal the GM you're ready</span>}
       </div>
 
       {/* ---------------- system editor popup ---------------- */}
@@ -431,6 +474,20 @@ export default function MapCanvas({
         />
       )}
 
+      {/* ---------------- army popup ---------------- */}
+      {selArmyObj && (armyPos || {})[selArmyObj.id] && (
+        <ArmyPopup
+          army={selArmyObj} faction={factions.find((f) => f.id === selArmyObj.factionId)}
+          anchor={w2s(armyPos[selArmyObj.id].x, armyPos[selArmyObj.id].y)}
+          containerSize={containerSize} isMobile={isMobile}
+          canRename={canOrderFor ? canOrderFor(selArmyObj.factionId) : false}
+          canEdit={isGM} showDivisions={isGM || selArmyObj.factionId === viewerFactionId}
+          systems={systems} patchArmy={patchArmy} renameArmy={renameArmy} removeArmy={removeArmy}
+          onOpenArmy={() => goToArmy(selArmyObj.id)} onOrderMove={() => orderArmyMove(selArmyObj.id)}
+          onClose={() => setSelArmy(null)}
+        />
+      )}
+
       {/* ---------------- agent popup ---------------- */}
       {selAgentObj && agentPos[selAgentObj.id] && (
         <AgentPopup
@@ -455,6 +512,10 @@ export default function MapCanvas({
           const f = fleets.find((x) => x.id === routing.id);
           pieceLabel = f ? f.name : "Fleet";
           originName = f && f.systemId ? (systemById(f.systemId) || {}).name : "in transit";
+        } else if (routing.type === "army") {
+          const r = (armies || []).find((x) => x.id === routing.id);
+          pieceLabel = r && r.name && r.name.trim() ? r.name.trim() : "Army";
+          originName = r && r.systemId ? (systemById(r.systemId) || {}).name : "unplaced";
         } else {
           const a = (agents || []).find((x) => x.id === routing.id);
           const fac2 = a ? factions.find((f) => f.id === a.factionId) : null;

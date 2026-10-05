@@ -97,6 +97,39 @@ export function returnDetachments(fleets, detachments) {
   });
 }
 
+// Army orders reuse the squadron-mission pipeline: an army detachment is
+// { shipId: armyId, squadronId: divisionId, model, count }, so a mission's
+// survivingDetachments/loss bookkeeping works unchanged. These two are the
+// army-side twins of commitDetachments/returnDetachments above.
+export function commitArmyDivisions(armies, armyId, detachments) {
+  return armies.map((r) => (r.id !== armyId ? r : {
+    ...r,
+    divisions: (r.divisions || []).map((d) => {
+      const det = detachments.find((x) => x.squadronId === d.id);
+      return det ? { ...d, count: Math.max(0, (Number(d.count) || 0) - det.count) } : d;
+    }),
+  }));
+}
+
+// Divisions come home by army id; a division removed while away is recreated
+// by the model it fought as, and one whose army is gone has nowhere to land.
+export function returnArmyDivisions(armies, detachments) {
+  const backs = (detachments || []).filter((d) => d.count > 0);
+  if (backs.length === 0) return armies;
+  return armies.map((r) => {
+    const mine = backs.filter((d) => d.shipId === r.id);
+    if (mine.length === 0) return r;
+    let divisions = r.divisions || [];
+    for (const d of mine) {
+      const idx = divisions.findIndex((x) => x.id === d.squadronId);
+      divisions = idx === -1
+        ? [...divisions, { id: d.squadronId, count: d.count, model: d.model }]
+        : divisions.map((x, i) => (i === idx ? { ...x, count: (Number(x.count) || 0) + d.count } : x));
+    }
+    return { ...r, divisions };
+  });
+}
+
 // A mission's craft aren't back in their carrier's hangar until it resolves —
 // survivors unknown while "pending" — or, if resolved with "delay resolution",
 // until Next Turn hands them back (see App.jsx resolveMission/nextTurn).

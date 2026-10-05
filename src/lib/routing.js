@@ -15,6 +15,7 @@
 //   #/politics
 //   #/codex · #/codex/<category> · #/codex/<category>/<entryId>
 //   #/assets · #/assets/<factionId>
+//   #/armies · #/armies/<armyId>
 //   #/agents · #/agents/<factionId> · #/agents/<factionId>/<agentId>
 //   #/gmtools
 //
@@ -23,7 +24,7 @@
 
 import { WIKI_CATS } from "../constants.js";
 
-export const TABS = ["map", "fleet", "politics", "codex", "timeline", "updates", "assets", "objectives", "agents", "gmtools"];
+export const TABS = ["map", "fleet", "armies", "politics", "codex", "timeline", "updates", "assets", "objectives", "agents", "gmtools"];
 
 export const DEFAULT_ROUTE = {
   tab: "map",
@@ -35,6 +36,7 @@ export const DEFAULT_ROUTE = {
   assetSubtab: null, // null = no section deep-link; otherwise "resources"/"trackers"/"modifiers" to scroll to on arrival
   agentFactionId: null, // null = whichever faction AgentsView falls back to
   agentId: null, // null = whichever agent AgentsView falls back to; set when deep-linking to one (e.g. "Request Action" from the map or politics view)
+  armyId: null, // null = whichever army ArmiesView falls back to
 };
 
 const isTab = (t) => TABS.includes(t);
@@ -62,6 +64,9 @@ export function parseHash(hash) {
   if (tab === "fleet") {
     return { tab, fleetId: rest[0] || null, compareId: rest[1] === "vs" ? rest[2] || null : null };
   }
+  if (tab === "armies") {
+    return { tab, armyId: rest[0] || null };
+  }
   if (tab === "assets") {
     return { tab, assetFactionId: rest[0] || null, assetSubtab: rest[1] || null };
   }
@@ -79,6 +84,8 @@ export function formatHash(route) {
   } else if (route.tab === "fleet" && route.fleetId) {
     seg.push(route.fleetId);
     if (route.compareId) seg.push("vs", route.compareId);
+  } else if (route.tab === "armies" && route.armyId) {
+    seg.push(route.armyId);
   } else if (route.tab === "assets" && route.assetFactionId) {
     seg.push(route.assetFactionId);
     if (route.assetSubtab) seg.push(route.assetSubtab);

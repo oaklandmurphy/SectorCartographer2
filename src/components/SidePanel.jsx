@@ -1,10 +1,10 @@
-import { X, Layers, Users, Plus, Eye, EyeOff, Rocket, VenetianMask, Route } from "lucide-react";
+import { X, Layers, Users, Plus, Eye, EyeOff, Rocket, VenetianMask, Swords, Route } from "lucide-react";
 import { T, cut } from "../theme.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 
 export default function SidePanel({
   factions, layers, systems, fleets, canEdit, isMobile, onClose, addFaction, patchFaction, deleteFaction, addLayer, patchLayer, toggleLayer,
-  showFleets, setShowFleets, showAgents, setShowAgents, showOrders, setShowOrders, canOrder,
+  showFleets, setShowFleets, showAgents, setShowAgents, showArmies, setShowArmies, showOrders, setShowOrders, canOrder,
 }) {
   const confirm = useConfirm();
   return (
@@ -129,6 +129,15 @@ export default function SidePanel({
             </button>
             <VenetianMask size={13} style={{ color: T.mut, flexShrink: 0 }} />
             <span style={{ fontSize: 11.5, color: T.text, flex: 1 }}>Agents</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, background: T.panel2,
+            border: `1px solid ${T.line}`, borderRadius: 2, padding: "5px 6px", opacity: showArmies ? 1 : 0.5 }}>
+            <button onClick={() => setShowArmies((v) => !v)} title={showArmies ? "Hide armies" : "Show armies"}
+              style={{ background: "none", border: "none", color: showArmies ? T.accent : T.faint, cursor: "pointer", padding: 0, display: "flex", flexShrink: 0 }}>
+              {showArmies ? <Eye size={15} /> : <EyeOff size={15} />}
+            </button>
+            <Swords size={13} style={{ color: T.mut, flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: T.text, flex: 1 }}>Armies</span>
           </div>
           {canOrder && (
             <div style={{ display: "flex", alignItems: "center", gap: 7, background: T.panel2,

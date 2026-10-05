@@ -11,7 +11,7 @@ can drop on any host or embed in a page you already have.
 
 ## What's in it
 
-Five views, switched from the toolbar and each with its own URL:
+Six views, switched from the toolbar and each with its own URL:
 
 - **Map** — the sector itself. Place star systems, connect them with hyperlanes,
   drop fleet markers, and draw freehand over the top for borders and staging
@@ -23,6 +23,15 @@ Five views, switched from the toolbar and each with its own URL:
 - **Fleets** — who commands what. A fleet's carriers, each carrier's hangar of
   squadrons, and a compare mode for reading two fleets side by side. Also home to
   the ship art library. See [Fleets, carriers & squadrons](#fleets-carriers--squadrons).
+- **Armies** — ground forces that fight surface battles. Each army is a named
+  piece parked at a system on the map, holding a roster of divisions (the ground
+  twin of a carrier's squadrons). The GM creates armies, places them and assigns
+  divisions; a faction's players rename their own armies, send them Army orders
+  (the ground twin of a squadron order: commit divisions to a categorized, free-text order
+  the GM resolves on the mission odds table, survivors returning to the army)
+  and plot move orders on the map.
+  Armies are visible to their own faction and its allies/vassals, but only the
+  owner and the GM see their divisions.
 - **Politics** — factions as nodes, their relationships as edges (alliance, trade
   pact, neutral, rivalry, war). Zoom into a faction to open up the characters and
   organizations inside it.

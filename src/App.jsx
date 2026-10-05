@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
-import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff, Target } from "lucide-react";
+import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Swords, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff, Target } from "lucide-react";
 import { T, F, panelStyle, cut } from "./theme.js";
 import { KNOWN_CODE_KEY, ROLE_COLORS, DEFAULT_SQUADRON_SIZE, GM_RECIPIENT, MIN_ZOOM, MAX_ZOOM, DETAIL_ZOOM } from "./constants.js";
 import { detailPositions, subregionAt, storedSubregion, subregionOptions } from "./lib/subregions.js";
@@ -12,9 +12,10 @@ import {
   loadWikiImage, saveWikiImage, loadWikiBody, saveWikiBody, loadAllWikiBodies,
 } from "./lib/sectorRepo.js";
 import { buildSectorUpdates, buildCollectionUpdates, buildGroupUpdates, buildReadsUpdates, ARCHIVE_COLLECTIONS, SNAPSHOT_COLLECTIONS, READ_COLLECTIONS } from "./lib/sectorSchema.js";
-import { resolveViewer, canSee, canSeeSubmission, visibleFleets, friendlyFactionIds, visibleAgents, visibleOrders, visibleActions, visibleMissions } from "./lib/visibility.js";
+import { resolveViewer, canSee, canSeeSubmission, visibleFleets, friendlyFactionIds, visibleAgents, visibleArmies, visibleOrders, visibleActions, visibleMissions } from "./lib/visibility.js";
 import { MISSION_TYPES, targetableSystems } from "./lib/missionTypes.js";
-import { craftInCarrier, withSquadrons, squadronsOf, commitDetachments, returnDetachments, survivingDetachments, incomingCraft } from "./lib/carriers.js";
+import { craftInCarrier, withSquadrons, squadronsOf, commitDetachments, returnDetachments, survivingDetachments, incomingCraft, commitArmyDivisions, returnArmyDivisions } from "./lib/carriers.js";
+import { ARMY_ORDER_CATEGORIES } from "./lib/armyOrderCategories.js";
 import { moveShips, moveSquadron, moveVessel, disbandEmptyFleets, spawnFleet } from "./lib/fleets.js";
 import { effectiveMoveOrders } from "./lib/movement.js";
 import { eligibleSystemFor, systemCap, systemStagedTotal, adjustLine, applyReplenishments, replenishmentSummary } from "./lib/replenish.js";
@@ -38,6 +39,7 @@ const PoliticsView = lazy(() => import("./components/PoliticsView.jsx"));
 const AssetsView = lazy(() => import("./components/AssetsView.jsx"));
 const UpdatesView = lazy(() => import("./components/UpdatesView.jsx"));
 const AgentsView = lazy(() => import("./components/AgentsView.jsx"));
+const ArmiesView = lazy(() => import("./components/ArmiesView.jsx"));
 const GMToolsView = lazy(() => import("./components/GMToolsView.jsx"));
 const ObjectivesView = lazy(() => import("./components/ObjectivesView.jsx"));
 const TimelineView = lazy(() => import("./components/TimelineView.jsx"));
@@ -77,8 +79,7 @@ export default function GalaxySectorMap() {
   const [resources, setResources] = useState([]); // per-faction integer counters (Assets tab: Resources subtab)
   const [resourceTransactions, setResourceTransactions] = useState([]); // log of resource sends between factions (and to the GM) — GM Tools: Transactions tab
   const [projects, setProjects] = useState([]); // per-faction turn-timer counters (Assets tab: Projects subtab) — see nextTurn
-  const [surfaceForces, setSurfaceForces] = useState([]); // per-faction, per-planet surface-conflict footholds (Assets tab: Surface Forces subtab) — infiltrated/cell/army
-  const [surfaceBattles, setSurfaceBattles] = useState([]); // two-faction tug-of-war progress bars (Assets tab: Surface Battles subtab) — see nextTurn
+  const [armies, setArmies] = useState([]); // ground forces parked at a system, fighting surface battles — named, hold divisions, take move orders (Armies tab)
   const [notes, setNotes] = useState([]); // GM Tools: freeform notes + tracked roll resolutions
   const [agents, setAgents] = useState([]); // covert operatives, one optional character each, own-faction only
   const [orders, setOrders] = useState([]); // fleet/agent move-order proposals the GM resolves by hand
@@ -98,6 +99,7 @@ export default function GalaxySectorMap() {
   const [showOrders, setShowOrders] = useState(true); // personal: show/hide the move-order overlay on the map
   const [showFleets, setShowFleets] = useState(true); // personal: show/hide fleet pieces on the map
   const [showAgents, setShowAgents] = useState(true); // personal: show/hide agent pieces on the map
+  const [showArmies, setShowArmies] = useState(true); // personal: show/hide army pieces on the map
   const [showAssetsBar, setShowAssetsBar] = useState(true); // personal: show/hide the resource/tracker rail below the tab bar
   const [view, setView] = useState({ scale: 1, ox: 60, oy: 40 });
   const [strokes, setStrokes] = useState([]);
@@ -105,6 +107,7 @@ export default function GalaxySectorMap() {
   const [selSystem, setSelSystem] = useState(null);
   const [selFleet, setSelFleet] = useState(null);
   const [selAgent, setSelAgent] = useState(null); // agent whose popup is open on the map
+  const [selArmy, setSelArmy] = useState(null); // army whose popup is open on the map
   const [transferFleetId, setTransferFleetId] = useState(null); // fleet the fleet transfer modal is open for
   const [routing, setRouting] = useState(null);   // { type, id, factionId, suggestion, suggesterFactionId } — the piece being plotted in orders mode (suggestion: plotting a move for a friendly faction's fleet)
   const [focusMapFleetId, setFocusMapFleetId] = useState(null); // fleet to center the map on once the map tab is up (see orderFleetMove)
@@ -146,7 +149,7 @@ export default function GalaxySectorMap() {
      so pages are shareable and Back works. */
   const [route, navigate] = useHashRoute();
   const { tab: activeTab, cat: activeCat, wikiId: selectedWikiId,
-    fleetId: fleetPrimaryId, compareId: fleetCompareId, assetFactionId, assetSubtab, agentFactionId, agentId: initialAgentId } = route;
+    fleetId: fleetPrimaryId, compareId: fleetCompareId, assetFactionId, assetSubtab, agentFactionId, agentId: initialAgentId, armyId: armyRouteId } = route;
 
   // Setters keeping the useState signature (a value or an updater) that the
   // views below already call them with, so only their plumbing changed.
@@ -161,6 +164,7 @@ export default function GalaxySectorMap() {
   });
   const setFleetCompareId = (v) => navigate((r) => ({ compareId: fromSetter(v, r.compareId) }));
   const setAssetFactionId = (v) => navigate((r) => ({ assetFactionId: fromSetter(v, r.assetFactionId) }));
+  const setArmyRouteId = (v) => navigate((r) => ({ armyId: fromSetter(v, r.armyId) }));
   const setAgentFactionId = (v) => navigate((r) => ({ agentFactionId: fromSetter(v, r.agentFactionId) }));
 
   useEffect(() => { if (isMobile) setPanelOpen(false); }, [isMobile]); // avoid opening full-screen on first mobile load
@@ -177,8 +181,8 @@ export default function GalaxySectorMap() {
   // and now also `wiki` and `art` (see the wiki/art load-and-autosave block
   // further down), pulled off the hot root listener for the same reason.
   const sector = useMemo(
-    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, objectives, endTurnChecks, lockCode, fleetsPublic, turnNumber }),
-    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, objectives, endTurnChecks, lockCode, fleetsPublic, turnNumber],
+    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, armies, agents, orders, actions, missions, replenishments, turns, threads, objectives, endTurnChecks, lockCode, fleetsPublic, turnNumber }),
+    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, armies, agents, orders, actions, missions, replenishments, turns, threads, objectives, endTurnChecks, lockCode, fleetsPublic, turnNumber],
   );
   // The sector as the database currently has it. Null until the load below fills
   // it in, which is also what stops an autosave from firing against an empty
@@ -225,7 +229,7 @@ export default function GalaxySectorMap() {
       setSystems(data.systems); setLinks(data.links); setFleets(data.fleets);
       setStrokes(data.strokes); setRoles(data.roles);
       setModifiers(data.modifiers); setResources(data.resources); setResourceTransactions(data.resourceTransactions);
-      setProjects(data.projects); setSurfaceForces(data.surfaceForces); setSurfaceBattles(data.surfaceBattles);
+      setProjects(data.projects); setArmies(data.armies);
       setAgents(data.agents); setOrders(data.orders); setActions(data.actions);
       setMissions(data.missions);
       setReplenishments(data.replenishments);
@@ -428,6 +432,7 @@ export default function GalaxySectorMap() {
     // An agent parked at this system becomes unplaced; any order routing through
     // it drops that stop so no path points at a system that's gone.
     setAgents((as) => as.map((a) => (a.systemId === id ? { ...a, systemId: null, subregion: null } : a)));
+    setArmies((rs) => rs.map((r) => (r.systemId === id ? { ...r, systemId: null } : r)));
     setOrders((os) => os.map((o) => (o.path.includes(id) ? { ...o, path: o.path.filter((s) => s !== id) } : o)));
     setSelSystem(null);
   }
@@ -633,13 +638,9 @@ export default function GalaxySectorMap() {
     setModifiers((ms) => ms.filter((m) => m.factionId !== id));
     setResources((rs) => rs.filter((r) => r.factionId !== id));
     setProjects((ps) => ps.filter((p) => p.factionId !== id));
-    setSurfaceForces((sf) => sf.filter((s) => s.factionId !== id));
-    // A surface battle belongs to two factions at once — losing either side
-    // leaves nothing to fight, so the whole record goes, same as a project
-    // or surface force losing its one factionId.
-    setSurfaceBattles((sb) => sb.filter((b) => b.attackerFactionId !== id && b.defenderFactionId !== id));
-    // A faction's agents, move orders, and action requests go with it.
+    // A faction's agents, armies, move orders, and action requests go with it.
     setAgents((as) => as.filter((a) => a.factionId !== id));
+    setArmies((rs) => rs.filter((r) => r.factionId !== id));
     setOrders((os) => os.filter((o) => o.factionId !== id));
     setActions((acts) => acts.filter((a) => a.factionId !== id));
     // Its own article outlives it, but shouldn't keep pointing at a faction gone.
@@ -1146,57 +1147,42 @@ export default function GalaxySectorMap() {
     setProjects((ps) => ps.filter((x) => x.id !== id));
   }
 
-  /* ---- surface forces: a faction's foothold in a surface conflict on one
-     planet (Assets tab, Surface Forces subtab) — GM-only, same gate as
-     modifiers/resources/projects. `tier` is one of "infiltrated" / "cell" /
-     "army", escalating as play advances: an Infiltrated presence grants a
-     positive espionage mod and can stand up an Active Cell; a Cell keeps that
-     mod and can be activated into an Army; an Army is open war against the
-     planet's controller. Unlike a fresh modifier/project (default Allies
-     visibility), a new entry here defaults to Private — a covert foothold
-     shouldn't out itself the moment it's logged. */
-  function addSurfaceForce(factionId) {
-    if (!isGM) return;
-    const entry = { id: uid("sfc"), factionId, systemId: null, tier: "infiltrated", text: "",
-      private: true, public: false, createdAt: Date.now() };
-    setSurfaceForces((sf) => [...sf, entry]);
+  /* ---- armies: ground forces a faction fields on the map, fighting surface
+     battles at whichever system they're parked in. Like a fleet, an army is a
+     named piece the GM creates, places and equips (adding/removing one, setting
+     its location, and assigning its divisions are all GM-only), while a player
+     of the owning faction may rename it (same canOrderFor gate as renameFleet)
+     and send it move orders. An army holds `divisions` ({ id, model, count }),
+     the ground analog of a carrier's squadrons. */
+  function addArmy(factionId, systemId = null) {
+    if (!canEdit) return null;
+    const id = uid("arm");
+    setArmies((rs) => [...rs, { id, factionId, name: "New Army", systemId: systemId || null, divisions: [], notes: "" }]);
+    return id;
   }
-  function patchSurfaceForce(id, p) {
-    if (!isGM) return;
-    setSurfaceForces((sf) => sf.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const patchArmy = (id, p) => { if (canEdit) setArmies((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r))); };
+  function renameArmy(id, name) {
+    const r = armies.find((x) => x.id === id);
+    if (!r || !canOrderFor(r.factionId)) return;
+    setArmies((rs) => rs.map((x) => (x.id === id ? { ...x, name } : x)));
   }
-  function removeSurfaceForce(id) {
-    if (!isGM) return;
-    setSurfaceForces((sf) => sf.filter((x) => x.id !== id));
+  function removeArmy(id) {
+    if (!canEdit) return;
+    setArmies((rs) => rs.filter((r) => r.id !== id));
+    setOrders((os) => os.filter((o) => !(o.pieceType === "army" && o.pieceId === id)));
+    setSelArmy(null);
   }
-
-  /* ---- surface battles: a two-sided tug-of-war between an attacker and a
-     defender faction (Assets tab, Surface Battles subtab) — GM-only, same
-     gate as everything else in Assets. Unlike every other entity here, one
-     record belongs to two factions at once and is what both sides' players
-     read — there's no second copy to keep in sync, "linking" it to the
-     other side of the invasion is just filling in `defenderFactionId`, and
-     from that point on it shows up under both factions' own Assets tab (see
-     AssetsView's battleEntries filter). `progress` sits on [0, barWidth],
-     which the GM sets at creation (and can adjust any time after); Next Turn
-     steps it by 1 toward whichever side holds `initiative`, unless the GM
-     has paused that with autoAdvance off — see the tickingBattles block in
-     nextTurn() below. */
-  function addSurfaceBattle(attackerFactionId, defenderFactionId) {
-    if (!isGM) return;
-    const entry = { id: uid("sbat"), name: "", text: "", systemId: null,
-      attackerFactionId, defenderFactionId: defenderFactionId || null,
-      barWidth: 10, progress: 5, initiative: "attacker", autoAdvance: true,
-      public: false, createdAt: Date.now() };
-    setSurfaceBattles((bs) => [...bs, entry]);
+  function addDivision(armyId) {
+    if (!canEdit) return;
+    setArmies((rs) => rs.map((r) => (r.id !== armyId ? r : { ...r, divisions: [...(r.divisions || []), { id: uid("div"), count: 1, model: "" }] })));
   }
-  function patchSurfaceBattle(id, p) {
-    if (!isGM) return;
-    setSurfaceBattles((bs) => bs.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  function patchDivision(armyId, divId, p) {
+    if (!canEdit) return;
+    setArmies((rs) => rs.map((r) => (r.id !== armyId ? r : { ...r, divisions: (r.divisions || []).map((d) => (d.id === divId ? { ...d, ...p } : d)) })));
   }
-  function removeSurfaceBattle(id) {
-    if (!isGM) return;
-    setSurfaceBattles((bs) => bs.filter((x) => x.id !== id));
+  function removeDivision(armyId, divId) {
+    if (!canEdit) return;
+    setArmies((rs) => rs.map((r) => (r.id !== armyId ? r : { ...r, divisions: (r.divisions || []).filter((d) => d.id !== divId) })));
   }
 
   /* ---- GM Tools notes: freeform log entries, plus roll resolutions the GM
@@ -1545,6 +1531,9 @@ export default function GalaxySectorMap() {
     const agentMoves = agents
       .map((a) => ({ a, dest: destFor("agent", a.id) }))
       .filter((x) => x.dest);
+    const armyMoves = armies
+      .map((r) => ({ r, dest: destFor("army", r.id) }))
+      .filter((x) => x.dest);
     // Missions the GM resolved with "delay resolution" checked (see
     // resolveMission): the ruling exists but their survivors are still off the
     // fleet's books. Next Turn is what actually hands them back, in the same
@@ -1561,10 +1550,25 @@ export default function GalaxySectorMap() {
         return next;
       });
     }
+    // Army orders ride the same missions queue — their delayed survivors go
+    // back to their armies' rosters in the same step.
+    if (delayedMissions.some((m) => m.armyId)) {
+      setArmies((rs) => {
+        let next = rs;
+        delayedMissions.filter((m) => m.armyId).forEach((m) => { next = returnArmyDivisions(next, survivingDetachments(m)); });
+        return next;
+      });
+    }
     if (agentMoves.length > 0) {
       setAgents((as) => as.map((a) => {
         const m = agentMoves.find((x) => x.a.id === a.id);
         return m ? { ...a, systemId: m.dest, subregion: null } : a;
+      }));
+    }
+    if (armyMoves.length > 0) {
+      setArmies((rs) => rs.map((r) => {
+        const m = armyMoves.find((x) => x.r.id === r.id);
+        return m ? { ...r, systemId: m.dest } : r;
       }));
     }
     if (ready.length > 0) setOrders((os) => os.filter((o) => !ready.includes(o)));
@@ -1584,9 +1588,10 @@ export default function GalaxySectorMap() {
 
     const systemName = (id) => (systems.find((s) => s.id === id) || {}).name || "?";
     const lines = [];
-    if (fleetMoves.length > 0 || agentMoves.length > 0) {
+    if (fleetMoves.length > 0 || agentMoves.length > 0 || armyMoves.length > 0) {
       lines.push("MOVEMENT");
       fleetMoves.forEach(({ f, dest }) => lines.push(`  Fleet ${f.name} → ${systemName(dest)}`));
+      armyMoves.forEach(({ r, dest }) => lines.push(`  Army ${r.name} → ${systemName(dest)}`));
       agentMoves.forEach(({ a, dest }) => {
         const fac = factions.find((x) => x.id === a.factionId);
         const member = fac && (fac.members || []).find((m) => m.id === a.memberId);
@@ -1614,8 +1619,8 @@ export default function GalaxySectorMap() {
       if (lines.length > 0) lines.push("");
       lines.push("SQUADRON MISSIONS RESOLVED");
       resolvedMissionsNow.forEach((m) => {
-        const fleet = fleets.find((f) => f.id === m.fleetId);
-        lines.push(`  ${fleet ? fleet.name : "Fleet"}: "${m.text}"`);
+        const unit = m.armyId ? armies.find((r) => r.id === m.armyId) : fleets.find((f) => f.id === m.fleetId);
+        lines.push(`  ${unit ? unit.name : (m.armyId ? "Army" : "Fleet")}: "${m.text}"`);
       });
     }
     if (stagedReplen.length > 0) {
@@ -1640,32 +1645,6 @@ export default function GalaxySectorMap() {
       });
       const tickingIds = new Set(tickingProjects.map((p) => p.id));
       setProjects((ps) => ps.map((p) => (tickingIds.has(p.id) ? { ...p, turnsRemaining: Math.max(0, (p.turnsRemaining || 0) - 1) } : p)));
-    }
-    // Surface battle progress: only those the GM hasn't paused (autoAdvance)
-    // and that have both sides set actually move, stepping by 1 toward
-    // whichever side currently holds initiative — the opposite of a
-    // project's fixed one-way countdown. Clamped to [0, barWidth]; a battle
-    // already run to either end just sits there until the GM (or a flipped
-    // initiative) moves it back, rather than running past the bar.
-    const tickingBattles = surfaceBattles.filter((b) => b.autoAdvance !== false && b.defenderFactionId);
-    if (tickingBattles.length > 0) {
-      if (lines.length > 0) lines.push("");
-      lines.push("SURFACE BATTLES ADVANCED");
-      tickingBattles.forEach((b) => {
-        const atk = factions.find((f) => f.id === b.attackerFactionId);
-        const def = factions.find((f) => f.id === b.defenderFactionId);
-        const width = b.barWidth || 0;
-        const delta = b.initiative === "defender" ? -1 : 1;
-        const next = Math.max(0, Math.min(width, (b.progress || 0) + delta));
-        lines.push(`  ${atk ? atk.name : "?"} vs ${def ? def.name : "?"}: "${b.name || "Untitled battle"}" — ${next}/${width}`);
-      });
-      const tickingBattleIds = new Set(tickingBattles.map((b) => b.id));
-      setSurfaceBattles((bs) => bs.map((b) => {
-        if (!tickingBattleIds.has(b.id)) return b;
-        const width = b.barWidth || 0;
-        const delta = b.initiative === "defender" ? -1 : 1;
-        return { ...b, progress: Math.max(0, Math.min(width, (b.progress || 0) + delta)) };
-      }));
     }
     // End-of-turn checks: the Ossite Surplus check runs at every system carrying
     // the ossite trait. Each system uses the check the GM reviewed this turn (or
@@ -1844,6 +1823,31 @@ export default function GalaxySectorMap() {
       createdAt: Date.now(), resolvedAt: null,
     }]);
   }
+  // An Army order: the ground twin of a squadron order. A player commits
+  // divisions (whole or part) from one army to a free-text order for the GM to
+  // adjudicate on the mission odds table; same lock-in rules as submitMission.
+  function submitArmyMission(armyId, detachments, text, spec) {
+    const army = armies.find((r) => r.id === armyId);
+    if (!army || !canOrderFor(army.factionId)) return;
+    const body = (text || "").trim();
+    if (!body) return;
+    const category = spec && ARMY_ORDER_CATEGORIES.some((c) => c.id === spec.category) ? spec.category : null;
+    if (!category) return;
+    const clean = (detachments || []).map((d) => {
+      const div = (army.divisions || []).find((x) => x.id === d.squadronId);
+      if (!div) return null;
+      const count = Math.min(Number(div.count) || 0, Math.max(0, Math.floor(Number(d.count) || 0)));
+      return count > 0 ? { shipId: army.id, squadronId: div.id, model: div.model || "", count } : null;
+    }).filter(Boolean);
+    if (clean.length === 0) return;
+    setArmies((rs) => commitArmyDivisions(rs, armyId, clean));
+    setMissions((ms) => [...ms, {
+      id: uid("msn"), factionId: army.factionId, armyId, text: body, category,
+      detachments: clean, status: "pending", resolution: null,
+      createdBy: viewer.roleId ? { roleId: viewer.roleId, roleName: viewer.roleName } : null,
+      createdAt: Date.now(), resolvedAt: null,
+    }]);
+  }
   // GM only — a submitted mission is locked in, so there is no player-side
   // withdraw (contrast removeAction, which a player can pull back while pending).
   // Deleting a still-pending one returns its committed craft, since nothing
@@ -1853,12 +1857,18 @@ export default function GalaxySectorMap() {
     if (!isGM) return;
     const m = missions.find((x) => x.id === id);
     if (!m) return;
-    if (m.status === "pending") setFleets((fs) => returnDetachments(fs, m.detachments || []));
+    if (m.status === "pending") {
+      setFleets((fs) => returnDetachments(fs, m.detachments || []));
+      if (m.armyId) setArmies((rs) => returnArmyDivisions(rs, m.detachments || []));
+    }
     // A delayed mission already has a ruling (see resolveMission), but its
     // survivors haven't been handed back yet — deleting it before Next Turn
     // reveals it is the only way to return them early, so do that here rather
     // than stranding those craft off the fleet's books forever.
-    else if (m.status === "delayed") setFleets((fs) => returnDetachments(fs, survivingDetachments(m)));
+    else if (m.status === "delayed") {
+      setFleets((fs) => returnDetachments(fs, survivingDetachments(m)));
+      if (m.armyId) setArmies((rs) => returnArmyDivisions(rs, survivingDetachments(m)));
+    }
     setMissions((ms) => ms.filter((x) => x.id !== id));
   }
   // GM: permanently delete an entry from a closed-out turn's archive (contrast
@@ -1883,7 +1893,10 @@ export default function GalaxySectorMap() {
     const m = missions.find((x) => x.id === id);
     if (!m || m.status !== "pending") return;
     const next = { ...m, status: delayed ? "delayed" : "resolved", resolution: resolution || null, resolvedAt: Date.now() };
-    if (!delayed) setFleets((fs) => returnDetachments(fs, survivingDetachments(next)));
+    if (!delayed) {
+      setFleets((fs) => returnDetachments(fs, survivingDetachments(next)));
+      if (m.armyId) setArmies((rs) => returnArmyDivisions(rs, survivingDetachments(next)));
+    }
     setMissions((ms) => ms.map((x) => (x.id === id ? next : x)));
   }
   // GM: fix up a resolved/delayed mission's outcome text after the fact (typo,
@@ -2003,6 +2016,26 @@ export default function GalaxySectorMap() {
     setLinkSource(null);
     beginOrder("fleet", fleetId, f.factionId);
     setFocusMapFleetId(fleetId);
+    setAccessOpen(false);
+    setMobileMenuOpen(false);
+  }
+  function goToArmy(armyId) {
+    navigate(() => ({ tab: "armies", armyId }));
+    setSelArmy(null);
+    setAccessOpen(false);
+    setMobileMenuOpen(false);
+  }
+  // Same hop as orderFleetMove, for an army: map tab, Orders mode, the army
+  // already selected for routing and the view centered on it. Own-faction (or
+  // GM) only — armies have no ally "suggest a move" path the way fleets do.
+  function orderArmyMove(armyId) {
+    const r = armies.find((x) => x.id === armyId);
+    if (!r || !canOrderFor(r.factionId)) return;
+    navigate(() => ({ tab: "map" }));
+    setMode("orders");
+    setLinkSource(null);
+    beginOrder("army", armyId, r.factionId);
+    setFocusMapFleetId(armyId);
     setAccessOpen(false);
     setMobileMenuOpen(false);
   }
@@ -2373,7 +2406,7 @@ export default function GalaxySectorMap() {
       setLinkSource(null);
       return;
     }
-    setSelFleet(null); setSelSystem(id);
+    setSelFleet(null); setSelArmy(null); setSelSystem(id);
   }
   function onFleetTap(id) {
     if (mode === "orders") { // select this fleet to plot its route
@@ -2382,14 +2415,21 @@ export default function GalaxySectorMap() {
       return;
     }
     if (mode === "link") return;
-    setSelSystem(null); setSelFleet(id); setSelAgent(null);
+    setSelSystem(null); setSelFleet(id); setSelAgent(null); setSelArmy(null);
   }
   function onAgentTap(id) {
     const a = agents.find((x) => x.id === id);
     if (!a) return;
     if (mode === "orders") { beginOrder("agent", id, a.factionId); return; }
     if (mode === "link") return;
-    setSelSystem(null); setSelFleet(null); setSelAgent(id);
+    setSelSystem(null); setSelFleet(null); setSelAgent(id); setSelArmy(null);
+  }
+  function onArmyTap(id) {
+    const r = armies.find((x) => x.id === id);
+    if (!r) return;
+    if (mode === "orders") { beginOrder("army", id, r.factionId); return; }
+    if (mode === "link") return;
+    setSelSystem(null); setSelFleet(null); setSelAgent(null); setSelArmy(id);
   }
   // The system a dropped piece snaps to: nearest within range. Zoomed into
   // detail the pie slices reach further out than the plate does, so the range
@@ -2435,19 +2475,34 @@ export default function GalaxySectorMap() {
       return { ...a, systemId: best ? best.id : origSystemId, subregion: snapSubregion(best, a) };
     }));
   }
-  function onDeselectAll() { setSelSystem(null); setSelFleet(null); setSelAgent(null); setLinkSource(null); }
+  // Armies are hard-locked to systems the same way fleets are, and dragged under
+  // the same single global GM flag (armies are GM-placed; players order them).
+  function onArmySnap(id, systemsSnapshot, origSystemId) {
+    if (!editingEnabled) return;
+    setArmies((rs) => rs.map((r) => {
+      if (r.id !== id) return r;
+      let best = null, bestD = 62; // world units
+      for (const s of systemsSnapshot) {
+        const dd = Math.hypot(s.x - r.x, s.y - r.y);
+        if (dd < bestD) { bestD = dd; best = s; }
+      }
+      return { ...r, systemId: best ? best.id : origSystemId };
+    }));
+  }
+  function onDeselectAll() { setSelSystem(null); setSelFleet(null); setSelAgent(null); setSelArmy(null); setLinkSource(null); }
 
   const mapInt = useMapInteractions({
     activeTab, mode, canEdit: editingEnabled,
     view, setView,
     systems, setSystems,
     fleets, setFleets,
-    setAgents,
+    setAgents, setArmies,
     strokes, setStrokes,
     drawColor: T.accent, drawWidth: 3,
     onSystemTap, onFleetTap,
     onFleetSnap,
     onAgentTap, onAgentSnap,
+    onArmyTap, onArmySnap,
     onShipDrop: moveShip,
     onDeselectAll,
     onLinkBackgroundClick: () => setLinkSource(null),
@@ -2572,19 +2627,51 @@ export default function GalaxySectorMap() {
     return out;
   }, [displayFleets, systems, detailZoom]);
 
+  // Armies: own faction plus allies/vassals, like fleet positions (visibleArmies).
+  const displayArmies = useMemo(() => visibleArmies(armies, viewer, { relations }), [armies, viewer, relations]);
+
+  /* ------------------------------------------------ derived army positions.
+     Armies sit in a row just beneath their system (below its name label), so
+     they never cover the agent column to the left or the fleets fanned out to
+     the right; a busy system wraps to a further row after MAX_PER_ROW. Grouped
+     over displayArmies — only the armies THIS viewer can see — for the same
+     reason as fleetPos/agentPos: a hidden army must not leave a gap. Hard-locked
+     to systems; only an army with no systemId has a free x/y (mid-drag). */
+  const armyPos = useMemo(() => {
+    const grouping = {};
+    displayArmies.forEach((r) => { if (r.systemId) (grouping[r.systemId] = grouping[r.systemId] || []).push(r.id); });
+    const out = {};
+    const ROW_Y = 58, ROW_GAP = 28, COL_GAP = 32, MAX_PER_ROW = 5;
+    displayArmies.forEach((r) => {
+      if (r.systemId) {
+        const sys = systems.find((s) => s.id === r.systemId);
+        if (sys) {
+          const arr = grouping[r.systemId]; const idx = arr.indexOf(r.id); const n = arr.length;
+          const row = Math.floor(idx / MAX_PER_ROW);
+          const col = idx % MAX_PER_ROW;
+          const inRow = Math.min(MAX_PER_ROW, n - row * MAX_PER_ROW);
+          out[r.id] = { x: sys.x + (col - (inRow - 1) / 2) * COL_GAP, y: sys.y + ROW_Y + row * ROW_GAP };
+          return;
+        }
+      }
+      if (r.x != null && r.y != null) out[r.id] = { x: r.x, y: r.y };
+    });
+    return out;
+  }, [displayArmies, systems]);
+
   // Consumes focusMapFleetId (set by orderFleetMove above) once the map tab is
   // actually mounted: reads the canvas's real DOM size directly rather than
   // mapInt.containerSize, since that state update from the map's own mount/resize
   // effect hasn't necessarily landed yet in this same pass.
   useEffect(() => {
     if (!focusMapFleetId || activeTab !== "map") return;
-    const pos = fleetPos[focusMapFleetId];
+    const pos = fleetPos[focusMapFleetId] || armyPos[focusMapFleetId];
     const el = mapInt.mapRef.current;
     if (!pos || !el) return;
     const scale = Math.min(MAX_ZOOM, Math.max(view.scale, 1.6));
     setView({ scale, ox: el.clientWidth / 2 - pos.x * scale, oy: el.clientHeight / 2 - pos.y * scale });
     setFocusMapFleetId(null);
-  }, [focusMapFleetId, activeTab, fleetPos]);
+  }, [focusMapFleetId, activeTab, fleetPos, armyPos]);
 
   // Agents and move orders are strictly own-faction (the GM sees all) — see
   // visibleAgents/visibleOrders. Unlike fleets, allies never see them.
@@ -2680,10 +2767,11 @@ export default function GalaxySectorMap() {
         const seen = missionReads.find((r) => r.factionId === factionId && r.missionId === m.id);
         return !seen || seen.seenAt < (m.resolvedAt || 0);
       }).map((m) => {
+        const army = m.armyId ? armies.find((r) => r.id === m.armyId) : null;
         const fleet = fleets.find((f) => f.id === m.fleetId);
-        return { ...m, fleetName: fleet ? fleet.name : "Fleet" };
+        return { ...m, fleetName: army ? army.name : (fleet ? fleet.name : (m.armyId ? "Army" : "Fleet")) };
       }).sort((a, b) => (b.resolvedAt || 0) - (a.resolvedAt || 0));
-  }, [displayMissions, displayArchivedMissions, missionReads, fleets, viewer.roleFactionId]);
+  }, [displayMissions, displayArchivedMissions, missionReads, fleets, armies, viewer.roleFactionId]);
   // Replenishment notices for this faction's own fleets: records revealed by
   // nextTurn (revealedAt set) that this faction hasn't acknowledged since. Own-
   // faction only, routed by the record's factionId — unlike a fleet's position,
@@ -2727,12 +2815,8 @@ export default function GalaxySectorMap() {
   // still show up in the rail, as long as it has at least one public entry
   // (of either kind) to justify the tab.
   const publicAssetFactionIds = useMemo(() => {
-    const ids = new Set([...modifiers, ...projects, ...surfaceForces].filter((x) => x.public).map((x) => x.factionId));
-    // A public surface battle names two factionIds, not one — either side
-    // can justify showing its tab to a viewer with no friendly tie to them.
-    surfaceBattles.filter((b) => b.public).forEach((b) => { ids.add(b.attackerFactionId); ids.add(b.defenderFactionId); });
-    return ids;
-  }, [modifiers, projects, surfaceForces, surfaceBattles]);
+    return new Set([...modifiers, ...projects].filter((x) => x.public).map((x) => x.factionId));
+  }, [modifiers, projects]);
   const displayModifierFactions = useMemo(
     () => (modifierFactionIds
       ? factions.filter((f) => modifierFactionIds.has(f.id) || publicAssetFactionIds.has(f.id))
@@ -2764,28 +2848,6 @@ export default function GalaxySectorMap() {
       p.public ||
       (modifierFactionIds.has(p.factionId) && (!p.private || p.factionId === viewer.roleFactionId)));
   }, [projects, modifierFactionIds, viewer.roleFactionId]);
-  // Surface forces: same three-state visibility as displayModifiers/displayProjects.
-  const displaySurfaceForces = useMemo(() => {
-    if (!modifierFactionIds) return surfaceForces; // GM: no filter
-    return surfaceForces.filter((s) =>
-      s.public ||
-      (modifierFactionIds.has(s.factionId) && (!s.private || s.factionId === viewer.roleFactionId)));
-  }, [surfaceForces, modifierFactionIds, viewer.roleFactionId]);
-  // Surface battles: visible to the GM, either participating faction's own
-  // players, their allies/vassals, or everyone if the GM marks it `public`.
-  // Unlike displayModifiers/displayProjects/displaySurfaceForces this can't
-  // rely on modifierFactionIds (own faction + allies) alone, since the two
-  // sides of a battle are usually enemies, not allies of each other — each
-  // side's own membership has to be checked directly too.
-  const displaySurfaceBattles = useMemo(() => {
-    if (!modifierFactionIds) return surfaceBattles; // GM: no filter
-    return surfaceBattles.filter((b) =>
-      b.public ||
-      b.attackerFactionId === viewer.roleFactionId ||
-      b.defenderFactionId === viewer.roleFactionId ||
-      modifierFactionIds.has(b.attackerFactionId) ||
-      modifierFactionIds.has(b.defenderFactionId));
-  }, [surfaceBattles, modifierFactionIds, viewer.roleFactionId]);
   // The always-visible resource strip at the top of the page: a signed-in
   // player's own faction's counters, so they're visible from any tab instead
   // of only inside Assets > Resources. Nothing to show for the GM (no single
@@ -2823,8 +2885,9 @@ export default function GalaxySectorMap() {
   const navTabs = [
     { id: "map", label: "Map", icon: MapIcon, title: "Sector map", show: true },
     { id: "fleet", label: "Fleets", icon: Ship, title: "Fleet rosters", show: true },
+    { id: "armies", label: "Armies", icon: Swords, title: "Army rosters & orders", show: true },
     { id: "agents", label: "Agents", icon: VenetianMask, title: "Agents & operatives", show: canOrder },
-    { id: "assets", label: "Assets", icon: Package, title: "Faction assets: modifiers, trackers, resources, projects & surface forces", show: true },
+    { id: "assets", label: "Assets", icon: Package, title: "Faction assets: modifiers, trackers, resources & projects", show: true },
     { id: "objectives", label: "Objectives", icon: Target, title: "Objectives: metrics and goals that track what players need to do to win", show: true },
     { id: "politics", label: "Politics", icon: Network, title: "Faction politics", show: true },
     { id: "codex", label: "Codex", icon: Library, title: "Setting codex / wiki", show: true,
@@ -3052,6 +3115,7 @@ export default function GalaxySectorMap() {
                 addLayer={addLayer} patchLayer={patchLayer} toggleLayer={toggleLayer}
                 showFleets={showFleets} setShowFleets={setShowFleets}
                 showAgents={showAgents} setShowAgents={setShowAgents}
+                showArmies={showArmies} setShowArmies={setShowArmies}
                 showOrders={showOrders} setShowOrders={setShowOrders} canOrder={canOrder}
               />
             )}
@@ -3060,18 +3124,19 @@ export default function GalaxySectorMap() {
               mapRef={mapInt.mapRef} canvasRef={mapInt.canvasRef} containerSize={mapInt.containerSize}
               isMobile={isMobile} mode={mode} canEdit={editingEnabled} isGM={canEdit} editLocked={editLocked} view={view} w2s={w2s}
               systems={displaySystems} fleets={displayFleets} links={links} fleetPos={fleetPos}
-              agents={displayAgents} agentPos={agentPos} orders={displayOrders} showOrders={showOrders}
+              agents={displayAgents} agentPos={agentPos} armies={displayArmies} armyPos={armyPos}
+              orders={displayOrders} showOrders={showOrders}
               actions={displayActions}
-              showFleets={showFleets} showAgents={showAgents}
+              showFleets={showFleets} showAgents={showAgents} showArmies={showArmies}
               factions={factions} layers={layers} factionById={factionById} layerById={layerById}
-              selSystem={selSystem} selFleet={selFleet} selAgent={selAgent} linkSource={linkSource} hoverFleet={mapInt.hoverFleet}
+              selSystem={selSystem} selFleet={selFleet} selAgent={selAgent} selArmy={selArmy} linkSource={linkSource} hoverFleet={mapInt.hoverFleet}
               routing={routing} routingOrder={routingOrder}
               onMapPointerDown={mapInt.onMapPointerDown} onMapDoubleClick={mapInt.onMapDoubleClick}
               startPieceDrag={mapInt.startPieceDrag} canvasDown={mapInt.canvasDown} canvasMove={mapInt.canvasMove} canvasUp={mapInt.canvasUp}
-              onAgentTap={onAgentTap}
+              onAgentTap={onAgentTap} onArmyTap={onArmyTap}
               undoOrderStop={undoOrderStop} clearRoutingOrder={clearRoutingOrder} commitRoutingOrder={commitRoutingOrder}
               setRoutingNotes={setRoutingNotes}
-              setSelSystem={setSelSystem} setSelFleet={setSelFleet} setSelAgent={setSelAgent}
+              setSelSystem={setSelSystem} setSelFleet={setSelFleet} setSelAgent={setSelAgent} setSelArmy={setSelArmy}
               patchSystem={patchSystem} addMarker={addMarker} patchMarker={patchMarker} removeMarker={removeMarker}
               deployFleetAt={deployFleetAt} deleteSystem={deleteSystem}
               patchFleet={patchFleet} renameFleet={renameFleet} addShip={addShip} patchShip={patchShip} removeShip={removeShip}
@@ -3079,6 +3144,8 @@ export default function GalaxySectorMap() {
               addSquadron={addSquadron} patchSquadron={patchSquadron} removeSquadron={removeSquadron}
               patchAgent={patchAgent} removeAgent={removeAgent} canManageAgents={canManageAgents}
               canPlaceAgents={canPlaceAgents}
+              patchArmy={patchArmy} renameArmy={renameArmy} removeArmy={removeArmy}
+              goToArmy={goToArmy} orderArmyMove={orderArmyMove}
               canOrderFor={canOrderFor} submitMission={submitMission}
               goToFleet={goToFleet} goToAgentAction={goToAgentAction} art={art}
               wiki={displayWiki} roles={roles} goToCodex={goToCodex} createEntry={createEntry}
@@ -3104,6 +3171,20 @@ export default function GalaxySectorMap() {
             canOrderFor={canOrderFor} canSuggestFor={canSuggestFor} submitMission={submitMission}
             onOpenFleetTransfer={openFleetTransfer} onOrderFleetMove={orderFleetMove}
             incoming={incoming} viewerFactionId={viewer.roleFactionId}
+          />
+        )}
+
+        {activeTab === "armies" && (
+          <ArmiesView
+            armies={displayArmies} systems={displaySystems} canEdit={canEdit} isMobile={isMobile}
+            factionById={factionById} factions={factions}
+            armyId={armyRouteId} setArmyId={setArmyRouteId}
+            addArmy={addArmy} patchArmy={patchArmy} renameArmy={renameArmy} removeArmy={removeArmy}
+            addDivision={addDivision} patchDivision={patchDivision} removeDivision={removeDivision}
+            canOrderFor={canOrderFor} onOrderArmyMove={orderArmyMove} orders={displayOrders}
+            missions={displayMissions} archivedMissions={displayArchivedMissions} submitArmyMission={submitArmyMission}
+            loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
+            viewerFactionId={viewer.roleFactionId}
           />
         )}
 
@@ -3148,7 +3229,8 @@ export default function GalaxySectorMap() {
             openArticle={goToCodex} acknowledgeArticle={markWikiSeen} acknowledgeAll={acknowledgeAllUpdates}
             resolvedActions={unseenResolvedActions} openAction={goToAgentAction}
             acknowledgeAction={markActionSeen} acknowledgeAllActions={acknowledgeAllActionUpdates}
-            resolvedMissions={unseenResolvedMissions} openMission={goToFleet}
+            resolvedMissions={unseenResolvedMissions}
+            openMission={(m) => (m.armyId ? goToArmy(m.armyId) : goToFleet(m.fleetId))}
             acknowledgeMission={markMissionSeen} acknowledgeAllMissions={acknowledgeAllMissionUpdates}
             replenishments={unseenReplenishments} openReplenishment={goToFleet}
             acknowledgeReplenishment={markReplenishmentSeen} acknowledgeAllReplenishments={acknowledgeAllReplenishmentUpdates} />
@@ -3161,9 +3243,9 @@ export default function GalaxySectorMap() {
           <ActionArchiveView
             actions={displayActions} archivedActions={displayArchivedActions}
             missions={displayMissions} archivedMissions={displayArchivedMissions}
-            agents={displayAgents} fleets={displayFleets} factions={factions} modifiers={modifiers}
+            agents={displayAgents} fleets={displayFleets} armies={displayArmies} factions={factions} modifiers={modifiers}
             turnNumber={turnNumber} isMobile={isMobile} viewer={viewer}
-            goToAgentAction={goToAgentAction} goToFleet={goToFleet}
+            goToAgentAction={goToAgentAction} goToFleet={goToFleet} goToArmy={goToArmy}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
           />
         )}
@@ -3179,10 +3261,6 @@ export default function GalaxySectorMap() {
             addResource={addResource} patchResource={patchResource} removeResource={removeResource}
             sendResource={sendResource}
             addProject={addProject} patchProject={patchProject} removeProject={removeProject}
-            systems={displaySystems} surfaceForces={displaySurfaceForces}
-            addSurfaceForce={addSurfaceForce} patchSurfaceForce={patchSurfaceForce} removeSurfaceForce={removeSurfaceForce}
-            surfaceBattles={displaySurfaceBattles}
-            addSurfaceBattle={addSurfaceBattle} patchSurfaceBattle={patchSurfaceBattle} removeSurfaceBattle={removeSurfaceBattle}
           />
         )}
 
@@ -3215,7 +3293,7 @@ export default function GalaxySectorMap() {
             roles={roles} factions={factions} modifiers={modifiers} notes={notes} isMobile={isMobile}
             resourceTransactions={resourceTransactions} removeResourceTransaction={removeResourceTransaction}
             addNote={addNote} removeNote={removeNote}
-            actions={actions} archivedActions={archivedActions} agents={agents} systems={systems} links={links}
+            actions={actions} archivedActions={archivedActions} agents={agents} armies={armies} systems={systems} links={links}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
             resolveAction={resolveAction} reopenAction={reopenAction} removeAction={removeAction}
             removeArchivedAction={removeArchivedAction}

@@ -44,7 +44,7 @@ export const V1_ACCESS_KEY = "galaxy-sector-access:v1";
 export const COLLECTIONS = [
   "factions", "relations", "layers", "systems",
   "links", "fleets", "ships", "strokes", "roles", "modifiers", "resources", "resourceTransactions",
-  "projects", "surfaceForces", "surfaceBattles", "agents", "orders", "actions", "missions",
+  "projects", "armies", "agents", "orders", "actions", "missions",
   "replenishments", "turns", "endTurnChecks", "threads", "objectives",
 ];
 
@@ -174,24 +174,12 @@ const defaults = {
   // the GM can flip it off (e.g. a stalled or manually-paced project) without
   // losing the turnsTotal/turnsRemaining split the progress bar needs.
   projects: { text: "", turnsTotal: 0, turnsRemaining: 0, autoDecrement: true },
-  // A faction's foothold in a surface conflict on one planet (Assets tab,
-  // Surface Forces subtab) — GM-only, same gate as modifiers/projects.
-  // `tier` escalates infiltrated -> cell -> army as the GM/players play it out;
-  // `private` defaults true at creation (see addSurfaceForce), unlike a fresh
-  // modifier/project which defaults to the Allies visibility.
-  surfaceForces: { systemId: null, tier: "infiltrated", text: "", private: true },
-  // A surface battle: a two-sided tug-of-war between an attacker and a
-  // defender faction (Assets tab, Surface Battles subtab) — GM-only, same
-  // gate as everything else here. Unlike every other entity in this file, it
-  // belongs to two factions at once and is a single shared record both
-  // sides' players read, rather than two separately-tracked copies kept in
-  // sync — see addSurfaceBattle in App.jsx. `progress` sits on [0, barWidth]
-  // (0 = total defender victory, barWidth = total attacker victory); the GM
-  // picks both the bar's width and where `progress` starts at creation.
-  // Next Turn steps it by 1 toward whichever side holds `initiative`, unless
-  // the GM has paused that with autoAdvance off.
-  surfaceBattles: { name: "", text: "", systemId: null, attackerFactionId: null, defenderFactionId: null,
-    barWidth: 10, progress: 5, initiative: "attacker", autoAdvance: true, public: false },
+  // An army: a ground force a faction fields on the map, parked at a system and
+  // fighting its surface battles there. Like a fleet's carriers hold squadrons,
+  // an army holds `divisions` ({ id, model, count }), which the GM assigns and
+  // players can't change. Position is derived from `systemId` (see armyPos in
+  // App.jsx); `x`/`y` only matter transiently while an army is being dragged.
+  armies: { name: "", factionId: null, systemId: null, divisions: [], notes: "" },
   // A staged replenishment: the strike craft the GM has queued onto a fleet's
   // carriers this turn (`lines`, applied on Next Turn), stamped with the system
   // it was staged in (per-turn budget) and the faction to notify. `revealedAt`
@@ -340,7 +328,15 @@ const turnSnapshotCodec = {
   }),
 };
 
+// An army's `divisions` list gets the same empty-array/sparse-object treatment
+// as a carrier's squadrons.
+const armyCodec = {
+  encode: (a) => ({ ...a, divisions: a.divisions || [] }),
+  decode: (a) => ({ ...a, divisions: asArray(a.divisions) }),
+};
+
 const codecs = {
+  armies: armyCodec,
   // A carrier: visibility (GM-only/role-restricted, same as a wiki entry) plus
   // its squadrons list, same empty-array/sparse-object treatment as everywhere
   // else. `fleetId` (which fleet it belongs to) rides along as a plain field —
