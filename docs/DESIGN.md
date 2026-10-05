@@ -33,7 +33,7 @@ Visual touchstones to test against: CIC plotting tables, naval survey charts, st
 
 ## 3. Information architecture
 
-Ten top-level views, one hash route each (`navTabs` in `App.jsx`). Some are role-gated.
+Eleven top-level views, one hash route each (`navTabs` in `App.jsx`). Some are role-gated.
 
 | Tab | Who | Purpose | Main component |
 |---|---|---|---|
@@ -41,6 +41,7 @@ Ten top-level views, one hash route each (`navTabs` in `App.jsx`). Some are role
 | Fleets | all | Carriers, hangars, squadrons, compare mode, ship art library | `FleetView`, `ArtLibrary` |
 | Agents | players, GM | Operatives per faction | `AgentsView` |
 | Assets | all | Resources, trackers, modifiers, projects, surface forces | `AssetsView` |
+| Objectives | all | Metrics and goals that track what players need to do to win | `ObjectivesView` |
 | Politics | all | Faction graph, relationship edges, member rosters | `PoliticsView` |
 | Codex | all | Wiki: news, factions, characters, locations, lore, rules, misc | `WikiView`, `CodexBody` |
 | Timeline | all | Codex articles laid out by turn | `TimelineView` |
@@ -257,3 +258,4 @@ _Nothing decided yet._
 | Date | Change |
 |---|---|
 | 2026-10-05 | Draft 0.1 created from a code read. |
+| 2026-10-05 | Added the Objectives tab (merged upstream) to the site map. Its visuals are not yet reviewed. |
