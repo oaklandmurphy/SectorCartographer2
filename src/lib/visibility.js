@@ -162,6 +162,17 @@ export function visibleOrders(orders, viewer) {
     || (o.suggestion && o.suggesterFactionId === viewer.roleFactionId));
 }
 
+// The armies a non-GM viewer renders (map + Armies tab): their own faction's plus
+// those of its allies/vassals, the same friendly set fleet positions are shown
+// to. Anonymous viewers (no faction) see none. A friendly army shows up by name
+// and place only — the Armies tab keeps its divisions to the owner and the GM.
+export function visibleArmies(armies, viewer, { relations } = {}) {
+  if (viewer.seesAll) return armies || [];
+  if (!viewer.roleFactionId) return [];
+  const friendly = friendlyFactionIds(viewer.roleFactionId, relations);
+  return (armies || []).filter((r) => friendly.has(r.factionId));
+}
+
 // Agent action requests a non-GM viewer renders on the Agents page: only their
 // own faction's, same rule as the agents that raise them. The GM sees every
 // faction's, which is how they collect and resolve them in GM Tools.

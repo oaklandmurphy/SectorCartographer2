@@ -5,6 +5,7 @@
 //     the turn in a system with a jump gate.
 //   - A fleet may move through up to 1 system in a turn, or 2 if it starts
 //     the turn in a system with a jump gate.
+//   - An army moves like a fleet: 1 system a turn, or 2 from a jump gate.
 //   - Either way, every step of the route must cross a `links` edge — no
 //     skipping past an unlinked system.
 //
@@ -17,7 +18,7 @@ export function isAdjacent(links, a, b) {
 
 export function maxHopsFor(pieceType, startSystem) {
   const gate = !!(startSystem && startSystem.hasJumpGate);
-  if (pieceType === "fleet") return gate ? 2 : 1;
+  if (pieceType === "fleet" || pieceType === "army") return gate ? 2 : 1;
   return gate ? 4 : 3; // agent
 }
 
@@ -72,10 +73,10 @@ export function effectiveMoveOrders(orders) {
 // one per piece, an accepted suggestion overriding the owner's) and report the
 // ones that break the movement rules: { order, piece, pieceType, issues }[],
 // empty if all clear.
-export function collectMovementViolations({ orders, agents, fleets, systems, links }) {
+export function collectMovementViolations({ orders, agents, fleets, armies, systems, links }) {
   const out = [];
   for (const order of effectiveMoveOrders(orders)) {
-    const pool = order.pieceType === "fleet" ? fleets : agents;
+    const pool = order.pieceType === "fleet" ? fleets : order.pieceType === "army" ? armies : agents;
     const piece = (pool || []).find((p) => p.id === order.pieceId);
     if (!piece) continue;
     const issues = movementIssues({

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Globe, GripVertical, Lock, MapPin, Minus, Package, Plus, Send, Swords, Timer, TimerOff, Trash2, Users } from "lucide-react";
+import { ChevronDown, Globe, GripVertical, Lock, Minus, Package, Plus, Send, Timer, TimerOff, Trash2, Users } from "lucide-react";
 import { T, F, inputStyle } from "../theme.js";
 import { GM_RECIPIENT } from "../constants.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
@@ -14,19 +14,6 @@ const LEVELS = [
   { id: "critical", label: "Critical", color: T.danger },
 ];
 
-// The three escalating tiers of a faction's foothold in a surface conflict on
-// one planet (see the Surface Forces section below). Each tier's `title` is
-// shown to the player as well as used as the button tooltip, since it's the
-// actual rules text — not just flavor.
-const TIERS = [
-  { id: "infiltrated", label: "Infiltrated", color: T.accent,
-    title: "Positive mod to espionage actions on this planet. Allows establishment of an Active Cell on this planet." },
-  { id: "cell", label: "Active Cell", color: T.amber,
-    title: "Positive mod to espionage actions on this planet. Can be activated to create an Army on this planet." },
-  { id: "army", label: "Army", color: T.danger,
-    title: "Waging a war against the controller of this planet." },
-];
-
 // Three mutually exclusive visibility states for a modifier/tracker card,
 // stored as the `private`/`public` booleans App.jsx's displayModifiers reads
 // (only one is ever true at a time — see the patch each option sends).
@@ -39,35 +26,27 @@ const VISIBILITY = [
     title: "Visible to every player — allies and enemies alike." },
 ];
 
-// Six collapsible sections per faction, stacked top to bottom: "Resources"
+// Four collapsible sections per faction, stacked top to bottom: "Resources"
 // (integer counters), "Projects" (turn-timer counters that count down when
 // the GM advances the turn), "Trackers" (a 4-position severity gauge — the
-// old slider-kind modifier, split out from the freeform notes), "Modifiers"
-// (freeform text notes), "Surface Forces" (a faction's per-planet foothold
-// in a surface conflict, escalating infiltrated -> cell -> army — see TIERS
-// above), and "Surface Battles" (a two-sided tug-of-war progress bar shared
-// with the opposing faction — see renderSurfaceBattleRow). Which factions
-// show up here is decided by the caller (App.jsx) from the viewer's
-// identity — see displayModifierFactions there. `subtab` is a deep-link
-// target (e.g. from a dashboard notification via goToAssets) that expands
-// and scrolls to one section on arrival; it's not an exclusive "active tab"
-// anymore since all six can be open at once.
+// old slider-kind modifier, split out from the freeform notes) and "Modifiers"
+// (freeform text notes). Which factions show up here is decided by the caller
+// (App.jsx) from the viewer's identity — see displayModifierFactions there.
+// `subtab` is a deep-link target (e.g. from a dashboard notification via
+// goToAssets) that expands and scrolls to one section on arrival; it's not an
+// exclusive "active tab" anymore since all four can be open at once.
 const SECTIONS = [
   { id: "resources", label: "Resources" },
   { id: "projects", label: "Projects" },
   { id: "trackers", label: "Trackers" },
   { id: "modifiers", label: "Modifiers" },
-  { id: "surface", label: "Surface Forces" },
-  { id: "battles", label: "Surface Battles" },
 ];
 
 export default function AssetsView({ factions, allFactions, modifiers, resources, projects, canEdit, isMobile, viewerFactionId,
   activeFactionId, setActiveFactionId, subtab,
   addModifier, patchModifier, removeModifier, reorderModifiers,
   addResource, patchResource, removeResource, sendResource,
-  addProject, patchProject, removeProject,
-  systems, surfaceForces, addSurfaceForce, patchSurfaceForce, removeSurfaceForce,
-  surfaceBattles, addSurfaceBattle, patchSurfaceBattle, removeSurfaceBattle }) {
+  addProject, patchProject, removeProject }) {
   const confirm = useConfirm();
   const activeId = factions.some((f) => f.id === activeFactionId)
     ? activeFactionId : (factions[0] && factions[0].id) || null;
@@ -78,10 +57,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
   const trackerEntries = entries.filter((m) => (m.kind || "text") === "slider");
   const resourceEntries = activeId ? resources.filter((r) => r.factionId === activeId) : [];
   const projectEntries = activeId ? projects.filter((p) => p.factionId === activeId) : [];
-  const surfaceEntries = activeId ? surfaceForces.filter((s) => s.factionId === activeId) : [];
-  // A battle belongs to two factions at once, so it shows up under whichever
-  // side's tab is active — the same shared record, not a copy per side.
-  const battleEntries = activeId ? surfaceBattles.filter((b) => b.attackerFactionId === activeId || b.defenderFactionId === activeId) : [];
   // Who a resource can be sent to: any other faction/player in the sector —
   // not just allies/vassals visible on this tab — plus the GM as a standing
   // option (for a tribute/cost with no faction recipient). `allFactions` is
@@ -105,8 +80,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
     projects: projectEntries.length === 0,
     trackers: trackerEntries.length === 0,
     modifiers: modifierEntries.length === 0,
-    surface: surfaceEntries.length === 0,
-    battles: battleEntries.length === 0,
   });
   const [collapsed, setCollapsed] = useState(emptySectionDefaults);
   const toggleSection = (id) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
@@ -177,8 +150,7 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
         const count = modifiers.filter((m) => m.factionId === f.id).length
           + resources.filter((r) => r.factionId === f.id).length
           + projects.filter((p) => p.factionId === f.id).length
-          + surfaceForces.filter((s) => s.factionId === f.id).length
-          + surfaceBattles.filter((b) => b.attackerFactionId === f.id || b.defenderFactionId === f.id).length;
+          + projects.filter((p) => p.factionId === f.id).length;
         return (
           <button key={f.id} onClick={() => selectFaction(f.id)} title={f.name}
             style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", whiteSpace: "nowrap",
@@ -523,296 +495,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
     );
   };
 
-  const renderSurfaceForceRow = (s) => {
-    const tier = TIERS.find((t) => t.id === s.tier) || TIERS[0];
-    const vis = s.public ? "public" : s.private ? "private" : "default";
-    const sys = systems.find((x) => x.id === s.systemId) || null;
-    return (
-      <div key={s.id} style={{ border: `1px solid ${T.line}`, borderRadius: 2, background: T.panel2, padding: 10,
-        display: "flex", flexDirection: "column", gap: 6,
-        flex: `0 1 ${isMobile ? "100%" : "380px"}`, maxWidth: isMobile ? "100%" : 440 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "-10px -10px 0", padding: "0 4px 0 8px",
-          background: `${activeFaction.color}1f`, borderBottom: `2px solid ${activeFaction.color}` }}>
-          <MapPin size={14} style={{ color: activeFaction.color, opacity: 0.7, flexShrink: 0 }} />
-          {canEdit ? (
-            <select value={s.systemId || ""} onChange={(e) => patchSurfaceForce(s.id, { systemId: e.target.value || null })}
-              style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", borderRadius: 0,
-                padding: "9px 10px", outline: "none", cursor: "pointer",
-                fontSize: 15, fontWeight: 800, fontFamily: F.body, letterSpacing: ".07em",
-                textTransform: "uppercase", color: activeFaction.color }}>
-              {!s.systemId && <option value="" disabled hidden>Select a planet…</option>}
-              {systems.map((sy) => <option key={sy.id} value={sy.id}>{sy.name}</option>)}
-            </select>
-          ) : (
-            <div style={{ flex: 1, minWidth: 0, padding: "9px 10px",
-              fontSize: 15, fontWeight: 800, fontFamily: F.body,
-              letterSpacing: ".07em", textTransform: "uppercase", color: activeFaction.color }}>
-              {sys ? sys.name : "Unplaced"}
-            </div>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {TIERS.map((t) => {
-            const on = t.id === tier.id;
-            return (
-              <button key={t.id} title={t.title} onClick={canEdit ? () => patchSurfaceForce(s.id, { tier: t.id }) : undefined}
-                style={{ flex: 1, cursor: canEdit ? "pointer" : "default",
-                  border: `1px solid ${on ? t.color : T.line}`,
-                  borderRadius: 2, padding: "6px 4px", background: on ? `${t.color}26` : T.panel3,
-                  color: on ? t.color : T.faint, opacity: on ? 1 : 0.75,
-                  fontFamily: F.body, fontSize: 11,
-                  fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* The current tier's rules text — same string as the button tooltip,
-            surfaced here too since it's the actual mechanical effect, not
-            flavor a hover is enough to convey. */}
-        <div style={{ fontSize: 10.5, color: T.mut, lineHeight: 1.5 }}>{tier.title}</div>
-        {/* Visibility: same three states as a modifier/project card, but a
-            freshly-added entry starts Private (see addSurfaceForce) — a covert
-            foothold on a planet shouldn't default to visible to allies. */}
-        {canEdit ? (
-          <div style={{ display: "flex", gap: 4 }}>
-            {VISIBILITY.map((v) => {
-              const on = v.id === vis;
-              const Icon = v.icon;
-              return (
-                <button key={v.id} title={v.title}
-                  onClick={() => patchSurfaceForce(s.id, { private: v.id === "private", public: v.id === "public" })}
-                  style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
-                    border: `1px solid ${on ? v.color : T.line}`, borderRadius: 2, padding: "5px 9px",
-                    background: on ? `${v.color}22` : T.panel3, color: on ? v.color : T.faint,
-                    fontFamily: F.body, fontSize: 10.5, fontWeight: 700,
-                    letterSpacing: ".05em", textTransform: "uppercase" }}>
-                  <Icon size={12} /> {v.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : vis !== "default" ? (
-          <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6,
-            border: `1px solid ${vis === "public" ? T.accent : T.amber}`, borderRadius: 2, padding: "4px 8px",
-            background: `${vis === "public" ? T.accent : T.amber}22`, color: vis === "public" ? T.accent : T.amber,
-            fontFamily: F.body, fontSize: 10, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-            {vis === "public" ? <Globe size={11} /> : <Lock size={11} />}
-            {vis === "public" ? "Public" : "Private"}
-          </div>
-        ) : null}
-        {canEdit ? (
-          <>
-            <AutoTextarea value={s.text || ""} onChange={(e) => patchSurfaceForce(s.id, { text: e.target.value })}
-              placeholder="Cell composition, cover, front line status…"
-              style={{ ...inputStyle, minHeight: 56, resize: "vertical", lineHeight: 1.6, fontSize: 12.5, padding: 10 }} />
-            <Btn kind="danger" style={{ alignSelf: "flex-start" }}
-              onClick={async () => { if (await confirm("Remove this surface force?")) removeSurfaceForce(s.id); }}>
-              <Trash2 size={13} /> Remove
-            </Btn>
-          </>
-        ) : s.text ? (
-          <div style={{ fontSize: 12.5, lineHeight: 1.6, color: T.text, whiteSpace: "pre-wrap" }}>
-            {s.text}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
-  const renderSurfaceBattleRow = (b) => {
-    const width = b.barWidth || 0;
-    const progress = Math.max(0, Math.min(width, b.progress || 0));
-    const pct = width > 0 ? (progress / width) * 100 : 50;
-    const auto = b.autoAdvance !== false;
-    // Faction lookups use the unfiltered `allFactions`, not the
-    // visibility-filtered `factions` the rail is built from — the opposing
-    // side of a battle may have no other public presence to earn its own
-    // tab, but its name/color still need to render wherever this record
-    // (already cleared for the viewer by displaySurfaceBattles) shows up.
-    const attacker = allFactions.find((f) => f.id === b.attackerFactionId) || null;
-    const defender = b.defenderFactionId ? allFactions.find((f) => f.id === b.defenderFactionId) || null : null;
-    const opponents = allFactions.filter((f) => f.id !== b.attackerFactionId);
-    const counterBtnStyle = {
-      display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-      width: 26, height: 26, border: `1px solid ${T.line}`, borderRadius: 2,
-      background: T.panel3, color: T.text, flexShrink: 0,
-    };
-    const setProgress = (v) => patchSurfaceBattle(b.id, { progress: Math.max(0, Math.min(width, Math.trunc(v) || 0)) });
-    return (
-      <div key={b.id} style={{ border: `1px solid ${T.line}`, borderRadius: 2, background: T.panel2,
-        padding: 10, display: "flex", flexDirection: "column", gap: 8,
-        flex: `0 1 ${isMobile ? "100%" : "420px"}`, maxWidth: isMobile ? "100%" : 480 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "-10px -10px 0", padding: "6px 10px",
-          background: `${T.line}33`, borderBottom: `2px solid ${T.line}` }}>
-          <Swords size={14} style={{ color: T.faint, flexShrink: 0 }} />
-          {canEdit ? (
-            <input value={b.name} onChange={(e) => patchSurfaceBattle(b.id, { name: e.target.value })}
-              placeholder="BATTLE NAME…"
-              style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none",
-                fontSize: 14, fontWeight: 800, fontFamily: F.body, letterSpacing: ".05em",
-                textTransform: "uppercase", color: T.text }} />
-          ) : (
-            <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 800, fontFamily: F.body,
-              letterSpacing: ".05em", textTransform: "uppercase", color: T.text }}>
-              {b.name || "Untitled battle"}
-            </div>
-          )}
-          {canEdit && (
-            <Btn kind="danger"
-              onClick={async () => { if (await confirm("Remove this surface battle? Both sides lose it.")) removeSurfaceBattle(b.id); }}>
-              <Trash2 size={13} />
-            </Btn>
-          )}
-        </div>
-        {/* The planet this battle is fought over — optional, same picker as
-            a surface force. */}
-        {canEdit ? (
-          <select value={b.systemId || ""} onChange={(e) => patchSurfaceBattle(b.id, { systemId: e.target.value || null })}
-            style={{ ...inputStyle, padding: "6px 8px" }}>
-            <option value="">No planet linked…</option>
-            {systems.map((sy) => <option key={sy.id} value={sy.id}>{sy.name}</option>)}
-          </select>
-        ) : b.systemId ? (
-          <div style={{ fontSize: 11, color: T.faint, display: "flex", alignItems: "center", gap: 5 }}>
-            <MapPin size={11} /> {(systems.find((sy) => sy.id === b.systemId) || {}).name || "Unknown"}
-          </div>
-        ) : null}
-        {/* Opponent: filling this in is what "links" the battle into the
-            other faction's own Assets tab — it's one shared record both
-            sides read (see battleEntries), not a copy created for them. */}
-        {!defender && canEdit && (
-          <select value="" onChange={(e) => patchSurfaceBattle(b.id, { defenderFactionId: e.target.value || null })}
-            style={{ ...inputStyle, padding: "6px 8px", borderColor: T.amber, color: T.amber }}>
-            <option value="" disabled>Select the opposing faction…</option>
-            {opponents.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-        )}
-        {!defender && !canEdit && (
-          <div style={{ fontSize: 11, color: T.faint, fontStyle: "italic" }}>Opposing faction not yet set by the GM.</div>
-        )}
-        {defender && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 700,
-              letterSpacing: ".05em", textTransform: "uppercase" }}>
-              <span style={{ color: attacker.color }}>{attacker.name}</span>
-              <span style={{ color: T.faint }}>vs</span>
-              <span style={{ color: defender.color }}>{defender.name}</span>
-            </div>
-            {/* The tug-of-war bar: attacker's color fills from the left up
-                to `progress`, defender's from there to `barWidth` — the
-                boundary between the two IS the line of control. */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1, height: 10, borderRadius: 2, border: `1px solid ${T.line}`, overflow: "hidden", display: "flex" }}>
-                <div style={{ width: `${pct}%`, background: attacker.color, transition: "width .2s" }} />
-                <div style={{ flex: 1, background: defender.color, transition: "width .2s" }} />
-              </div>
-              <span className="mono" style={{ fontSize: 11, color: T.faint, minWidth: 56, textAlign: "right" }}>
-                {progress} / {width || "?"}
-              </span>
-            </div>
-            {canEdit && (
-              <>
-                {/* Progress moves either direction (unlike a project's
-                    one-way countdown) — the ± buttons and number input both
-                    accept it going toward either faction. */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 10, color: T.faint, textTransform: "uppercase", letterSpacing: ".05em" }}>Progress</span>
-                  <button onClick={() => setProgress(progress - 1)} title={`Toward ${defender.name}`} style={counterBtnStyle}>
-                    <Minus size={13} />
-                  </button>
-                  <input type="number" min={0} max={width} value={progress}
-                    onChange={(e) => setProgress(Number(e.target.value))}
-                    style={{ ...inputStyle, width: 56, textAlign: "center", padding: "5px 4px", fontWeight: 800 }} />
-                  <button onClick={() => setProgress(progress + 1)} title={`Toward ${attacker.name}`} style={counterBtnStyle}>
-                    <Plus size={13} />
-                  </button>
-                  <span style={{ fontSize: 10, color: T.faint, textTransform: "uppercase", letterSpacing: ".05em", marginLeft: 10 }}>Bar width</span>
-                  <input type="number" min={1} value={width}
-                    onChange={(e) => patchSurfaceBattle(b.id, { barWidth: Math.max(1, Math.trunc(Number(e.target.value)) || 1) })}
-                    style={{ ...inputStyle, width: 56, textAlign: "center", padding: "5px 4px", fontWeight: 800 }} />
-                </div>
-                {/* Initiative: which side Next Turn automatically pushes the
-                    bar toward, while Auto-advance (below) is on. */}
-                <div style={{ display: "flex", gap: 4 }}>
-                  {[["attacker", attacker], ["defender", defender]].map(([side, fac]) => {
-                    const on = (b.initiative || "attacker") === side;
-                    return (
-                      <button key={side} onClick={() => patchSurfaceBattle(b.id, { initiative: side })}
-                        title={`${fac.name} has initiative — Next Turn pushes the bar toward them.`}
-                        style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, cursor: "pointer",
-                          border: `1px solid ${on ? fac.color : T.line}`, borderRadius: 2, padding: "5px 9px",
-                          background: on ? `${fac.color}22` : T.panel3, color: on ? fac.color : T.faint,
-                          fontFamily: F.body, fontSize: 10.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-                        <ArrowLeftRight size={12} /> {fac.name} initiative
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            {/* Auto-advance: whether Next Turn steps the bar toward
-                whichever side holds initiative — same pause pattern as a
-                project's auto-decrement. */}
-            {canEdit ? (
-              <button onClick={() => patchSurfaceBattle(b.id, { autoAdvance: !auto })}
-                title={auto
-                  ? "Steps 1 toward the initiative holder when the GM advances the turn. Click to pause."
-                  : "Paused — Next Turn will not move this battle. Click to resume."}
-                style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-                  border: `1px solid ${auto ? T.accent : T.line}`, borderRadius: 2, padding: "5px 9px",
-                  background: auto ? `${T.accent}22` : T.panel3, color: auto ? T.accent : T.faint,
-                  fontFamily: F.body, fontSize: 10.5, fontWeight: 700,
-                  letterSpacing: ".05em", textTransform: "uppercase" }}>
-                {auto ? <Timer size={12} /> : <TimerOff size={12} />}
-                {auto ? "Auto-advance on" : "Paused"}
-              </button>
-            ) : !auto ? (
-              <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6,
-                border: `1px solid ${T.line}`, borderRadius: 2, padding: "4px 8px",
-                background: T.panel3, color: T.faint, fontFamily: F.body,
-                fontSize: 10, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-                <TimerOff size={11} /> Paused
-              </div>
-            ) : null}
-          </>
-        )}
-        {/* Visibility: just a public/not toggle, unlike a modifier/project's
-            three-way — a battle already defaults to visible to just its two
-            sides (and their allies/vassals), so there's no narrower
-            "Private" state to offer. */}
-        {canEdit ? (
-          <button onClick={() => patchSurfaceBattle(b.id, { public: !b.public })}
-            title={b.public
-              ? "Visible to every player. Click to restrict to the two sides (and allies/vassals)."
-              : "Visible to the two sides and their allies/vassals. Click to make visible to everyone."}
-            style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-              border: `1px solid ${b.public ? T.accent : T.line}`, borderRadius: 2, padding: "5px 9px",
-              background: b.public ? `${T.accent}22` : T.panel3, color: b.public ? T.accent : T.faint,
-              fontFamily: F.body, fontSize: 10.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-            <Globe size={12} /> {b.public ? "Public" : "Sides only"}
-          </button>
-        ) : b.public ? (
-          <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6,
-            border: `1px solid ${T.accent}`, borderRadius: 2, padding: "4px 8px",
-            background: `${T.accent}22`, color: T.accent, fontFamily: F.body,
-            fontSize: 10, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
-            <Globe size={11} /> Public
-          </div>
-        ) : null}
-        {canEdit ? (
-          <AutoTextarea value={b.text || ""} onChange={(e) => patchSurfaceBattle(b.id, { text: e.target.value })}
-            placeholder="What's at stake, what each end of the bar means…"
-            style={{ ...inputStyle, minHeight: 44, resize: "vertical", lineHeight: 1.5, fontSize: 12, padding: 8 }} />
-        ) : b.text ? (
-          <div style={{ fontSize: 12, lineHeight: 1.5, color: T.mut, whiteSpace: "pre-wrap" }}>
-            {b.text}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
   // A collapsible section shell shared by all three views: a clickable
   // header bar (label + count + chevron) and, while expanded, whatever body
   // the caller renders.
@@ -909,51 +591,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
     </>
   ));
 
-  const surfaceForcesSection = () => section("surface", "Surface Forces", surfaceEntries.length, (
-    <>
-      {surfaceEntries.length === 0 && (
-        <div style={{ fontSize: 11.5, color: T.faint, padding: "16px 8px", textAlign: "center",
-          border: `1px dashed ${T.line}`, lineHeight: 1.6 }}>
-          No surface forces recorded for this faction yet.{canEdit ? " Add one below." : ""}
-        </div>
-      )}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {surfaceEntries.map(renderSurfaceForceRow)}
-      </div>
-      {canEdit && (
-        <>
-          <Btn kind="primary" onClick={() => addSurfaceForce(activeFaction.id)} style={{ justifyContent: "center" }}>
-            <Plus size={14} /> New surface force
-          </Btn>
-          {systems.length === 0 && (
-            <div style={{ fontSize: 10.5, color: T.faint, textAlign: "center" }}>
-              Add a system on the map first to place one on a planet.
-            </div>
-          )}
-        </>
-      )}
-    </>
-  ));
-
-  const battlesSection = () => section("battles", "Surface Battles", battleEntries.length, (
-    <>
-      {battleEntries.length === 0 && (
-        <div style={{ fontSize: 11.5, color: T.faint, padding: "16px 8px", textAlign: "center",
-          border: `1px dashed ${T.line}`, lineHeight: 1.6 }}>
-          No surface battles tracked for this faction yet.{canEdit ? " Add one below." : ""}
-        </div>
-      )}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {battleEntries.map(renderSurfaceBattleRow)}
-      </div>
-      {canEdit && (
-        <Btn kind="primary" onClick={() => addSurfaceBattle(activeFaction.id)} style={{ justifyContent: "center" }}>
-          <Plus size={14} /> New surface battle
-        </Btn>
-      )}
-    </>
-  ));
-
   const content = () => {
     if (!activeFaction) {
       return (
@@ -976,8 +613,6 @@ export default function AssetsView({ factions, allFactions, modifiers, resources
         {projectsSection()}
         {trackersSection()}
         {modifiersSection()}
-        {surfaceForcesSection()}
-        {battlesSection()}
       </div>
     );
   };

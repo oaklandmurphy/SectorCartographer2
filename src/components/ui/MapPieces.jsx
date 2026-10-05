@@ -1,4 +1,4 @@
-import { VenetianMask } from "lucide-react";
+import { VenetianMask, Swords } from "lucide-react";
 import { T, cut } from "../../theme.js";
 import { AGENT_ICONS } from "../../constants.js";
 import FactionSymbol from "../../lib/factionSymbols.jsx";
@@ -85,6 +85,31 @@ export function AgentGlyph({ factionColor, icon, badge, badgeTitle }) {
         boxShadow: "inset 0 1px 2px rgba(255,255,255,.18)" }} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Icon size={16} color={T.ink} />
+      </div>
+      {badge != null && (
+        <div className="mono" title={badgeTitle} style={{ position: "absolute", right: -7, bottom: -6, minWidth: 15, height: 14,
+          padding: "0 3px", background: T.ink, border: `1px solid ${factionColor}`,
+          color: factionColor, fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {badge}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// An army: a chamfered square plate in the faction's color with crossed swords
+// on it and a division-count badge — squarer and heavier than an agent's diamond
+// or a fleet's wedge so the three read apart at a glance. 28x28, matching MapCanvas.
+export function ArmyGlyph({ factionColor, badge, badgeTitle }) {
+  return (
+    <div style={{ position: "relative", width: 28, height: 28,
+      filter: `drop-shadow(0 2px 3px rgba(0,0,0,.7)) drop-shadow(0 0 3px ${factionColor}77)` }}>
+      <div style={{ position: "absolute", inset: 2, ...cut(6),
+        background: `linear-gradient(155deg, ${factionColor}, ${factionColor}bb 60%, #000 150%)`,
+        border: `1.5px solid ${T.ink}`,
+        boxShadow: "inset 0 1px 2px rgba(255,255,255,.18)" }} />
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Swords size={15} color={T.ink} />
       </div>
       {badge != null && (
         <div className="mono" title={badgeTitle} style={{ position: "absolute", right: -7, bottom: -6, minWidth: 15, height: 14,

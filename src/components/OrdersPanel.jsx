@@ -25,7 +25,7 @@ export default function OrdersPanel({
       {!pieceLabel ? (
         <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.6, display: "flex", gap: 7 }}>
           <MousePointerClick size={15} style={{ color: T.accent, flexShrink: 0, marginTop: 1 }} />
-          <span>Click a <b style={{ color: T.text }}>fleet</b> or <b style={{ color: T.text }}>agent</b> you own to plot its route — or an <b style={{ color: T.text }}>ally/vassal</b>'s fleet to suggest a move — then click a path through systems.</span>
+          <span>Click a <b style={{ color: T.text }}>fleet</b>, <b style={{ color: T.text }}>army</b> or <b style={{ color: T.text }}>agent</b> you own to plot its route — or an <b style={{ color: T.text }}>ally/vassal</b>'s fleet to suggest a move — then click a path through systems.</span>
         </div>
       ) : (
         <>

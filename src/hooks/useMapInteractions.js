@@ -18,12 +18,13 @@ export function useMapInteractions({
   view, setView,
   systems, setSystems,
   fleets, setFleets,
-  setAgents,
+  setAgents, setArmies,
   strokes, setStrokes,
   drawColor, drawWidth,
   onSystemTap, onFleetTap,
   onFleetSnap,
   onAgentTap, onAgentSnap,
+  onArmyTap, onArmySnap,
   onShipDrop,
   onDeselectAll,
   onLinkBackgroundClick,
@@ -53,7 +54,7 @@ export function useMapInteractions({
   // current on every render instead of depending on them directly, which would otherwise
   // make it close over stale versions (and stale `mode`/`linkSource`/etc. inside them).
   const callbacksRef = useRef(null);
-  callbacksRef.current = { onSystemTap, onFleetTap, onFleetSnap, onAgentTap, onAgentSnap, onShipDrop, onDeselectAll, onLinkBackgroundClick, onDoubleClickAddSystem };
+  callbacksRef.current = { onSystemTap, onFleetTap, onFleetSnap, onAgentTap, onAgentSnap, onArmyTap, onArmySnap, onShipDrop, onDeselectAll, onLinkBackgroundClick, onDoubleClickAddSystem };
 
   useEffect(() => { systemsRef.current = systems; }, [systems]);
   useEffect(() => { viewRef.current = view; }, [view]);
@@ -136,6 +137,7 @@ export function useMapInteractions({
     if (d && d.moved) {
       if (d.kind === "fleet") callbacksRef.current.onFleetSnap(d.id, systemsRef.current, d.origSystemId);
       if (d.kind === "agent") callbacksRef.current.onAgentSnap(d.id, systemsRef.current, d.origSystemId);
+      if (d.kind === "army") callbacksRef.current.onArmySnap(d.id, systemsRef.current, d.origSystemId);
     }
     dragRef.current = null;
     document.body.style.userSelect = "";
@@ -232,6 +234,9 @@ export function useMapInteractions({
         // fleets and systems drag under.
         const nx = d.origWX + dx / d.scale, ny = d.origWY + dy / d.scale;
         setAgents((as) => as.map((a) => (a.id === d.id ? { ...a, x: nx, y: ny, systemId: null } : a)));
+      } else if (d.kind === "army" && canEditRef.current) {
+        const nx = d.origWX + dx / d.scale, ny = d.origWY + dy / d.scale;
+        setArmies((rs) => rs.map((r) => (r.id === d.id ? { ...r, x: nx, y: ny, systemId: null } : r)));
       }
     };
     const onUp = (e) => {
@@ -252,6 +257,8 @@ export function useMapInteractions({
         if (d.kind === "fleet" && d.moved) callbacksRef.current.onFleetSnap(d.id, systemsRef.current, d.origSystemId);
         if (d.kind === "agent" && !d.moved) callbacksRef.current.onAgentTap(d.id);
         if (d.kind === "agent" && d.moved) callbacksRef.current.onAgentSnap(d.id, systemsRef.current, d.origSystemId);
+        if (d.kind === "army" && !d.moved) callbacksRef.current.onArmyTap(d.id);
+        if (d.kind === "army" && d.moved) callbacksRef.current.onArmySnap(d.id, systemsRef.current, d.origSystemId);
         if (d.kind === "pan" && !d.moved) callbacksRef.current.onDeselectAll();
         dragRef.current = null;
         document.body.style.userSelect = "";

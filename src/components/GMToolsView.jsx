@@ -107,7 +107,7 @@ function buildNarrativePrompt(turn, items) {
 // A modifier's point value is situational (the same modifier might swing +1 one
 // week and +2 the next), so it's typed in at the moment of use, not stored.
 export default function GMToolsView({ roles, factions, modifiers, notes, isMobile, addNote, removeNote,
-  actions, archivedActions, agents, systems, links, resolveAction, reopenAction, removeAction, removeArchivedAction,
+  actions, archivedActions, agents, armies, systems, links, resolveAction, reopenAction, removeAction, removeArchivedAction,
   loadOlderArchiveTurn, canLoadOlderArchive,
   editActionResolution, editArchivedActionResolution, setActionImportant, setArchivedActionImportant,
   fleets, missions, archivedMissions, resolveMission, removeMission, removeArchivedMission,
@@ -142,6 +142,7 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
   const effectiveMoves = useMemo(() => effectiveMoveOrders(orders), [orders]);
   const readyFleetMoves = effectiveMoves.filter((o) => o.pieceType === "fleet").length;
   const readyAgentMoves = effectiveMoves.filter((o) => o.pieceType === "agent").length;
+  const readyArmyMoves = effectiveMoves.filter((o) => o.pieceType === "army").length;
   // "Delayed" (see resolveAction/resolveMission's `delayed` flag) counts as
   // resolved for turn-advance purposes — Next Turn is exactly what reveals it —
   // even though it doesn't count as resolved for the player yet.
@@ -159,12 +160,13 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
   // than 1 (2 from a jump gate), or a route that skips a link. Recomputed
   // every render so a route the GM just fixed clears itself without a reopen.
   const movementViolations = useMemo(
-    () => collectMovementViolations({ orders, agents, fleets, systems, links }),
-    [orders, agents, fleets, systems, links],
+    () => collectMovementViolations({ orders, agents, fleets, armies, systems, links }),
+    [orders, agents, fleets, armies, systems, links],
   );
   function turnSummary() {
     const parts = [];
     if (readyFleetMoves > 0) parts.push(`${readyFleetMoves} fleet move${readyFleetMoves === 1 ? "" : "s"}`);
+    if (readyArmyMoves > 0) parts.push(`${readyArmyMoves} army move${readyArmyMoves === 1 ? "" : "s"}`);
     if (readyAgentMoves > 0) parts.push(`${readyAgentMoves} agent move${readyAgentMoves === 1 ? "" : "s"}`);
     if (resolvedActionsTotal > 0) parts.push(`${resolvedActionsTotal} action request${resolvedActionsTotal === 1 ? "" : "s"} closed out`);
     if (pendingActionsTotal > 0) parts.push(`${pendingActionsTotal} still pending, carried over`);
