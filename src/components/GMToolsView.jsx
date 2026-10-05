@@ -487,16 +487,17 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
     });
     missionPool.forEach((m) => {
       const fac = factions.find((f) => f.id === m.factionId) || null;
-      const fleet = (fleets || []).find((f) => f.id === m.fleetId) || null;
+      const fleet = m.armyId ? (armies || []).find((r) => r.id === m.armyId) || null
+        : (fleets || []).find((f) => f.id === m.fleetId) || null;
       items.push({
         id: `m:${m.id}`, kind: "mission", factionId: fac ? fac.id : "",
         factionName: fac ? fac.name : "Unassigned", factionColor: fac ? fac.color : T.faint,
-        label: fleet ? fleet.name : "Fleet (removed)",
+        label: fleet ? fleet.name : (m.armyId ? "Army (removed)" : "Fleet (removed)"),
         text: m.text, outcome: missionOutcomeLine(m), ts: m.resolvedAt || m.createdAt || 0,
       });
     });
     return items.sort((x, y) => x.factionName.localeCompare(y.factionName) || x.ts - y.ts);
-  }, [recapTurn, turnNumber, actions, archivedActions, missions, archivedMissions, factions, fleets]);
+  }, [recapTurn, turnNumber, actions, archivedActions, missions, archivedMissions, factions, fleets, armies]);
 
   // Split into agent actions vs. squadron missions within each faction — kept
   // as two distinct lists (not just an inline icon) so the two are easy to
@@ -1113,7 +1114,7 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
   // The section switch: each owns its own content; Notes stays shared underneath.
   const SECTIONS = [
     { id: "actions", label: "Agent Actions", icon: ClipboardList, title: "Agent action requests", badge: pendingTotal },
-    { id: "missions", label: "Squadron Missions", icon: Rocket, title: "Squadron mission requests", badge: pendingMissionTotal },
+    { id: "missions", label: "Missions", icon: Rocket, title: "Squadron & army mission requests", badge: pendingMissionTotal },
     { id: "replenish", label: "Replenish", icon: PackagePlus, title: "Top up strike craft on carriers in friendly space", badge: stagedReplenTotal },
     { id: "checks", label: "End of Turn Checks", icon: ListChecks, title: "Checks that resolve when the turn advances — the Ossite Surplus check", badge: ossitePassingTotal },
     { id: "narrative", label: "Narrative", icon: Sparkles, title: "Generate a narration prompt from last turn's important events", badge: importantLastTurn.length },
@@ -1280,7 +1281,7 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
         {sectionBar()}
         {turnBar()}
         {section === "missions" ? (
-          <SquadronMissionsPanel roles={roles} factions={factions} fleets={fleets} missions={missions}
+          <SquadronMissionsPanel roles={roles} factions={factions} fleets={fleets} armies={armies} missions={missions}
             archivedMissions={archivedMissions}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
             isMobile={isMobile} resolveMission={resolveMission} removeMission={removeMission}
@@ -1331,7 +1332,7 @@ export default function GMToolsView({ roles, factions, modifiers, notes, isMobil
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: T.void }}>
         {sectionBar()}
         {turnBar()}
-        <SquadronMissionsPanel roles={roles} factions={factions} fleets={fleets} missions={missions}
+        <SquadronMissionsPanel roles={roles} factions={factions} fleets={fleets} armies={armies} missions={missions}
           archivedMissions={archivedMissions}
           loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
           isMobile={isMobile} resolveMission={resolveMission} removeMission={removeMission}

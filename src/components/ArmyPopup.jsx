@@ -65,8 +65,8 @@ export default function ArmyPopup({
           <ExternalLink size={13} /> Armies tab
         </Btn>
         {canRename && (
-          <Btn kind="primary" onClick={onOrderMove} title="Plot this army's move order on the map">
-            <Route size={13} /> Army order
+          <Btn kind="primary" onClick={onOrderMove} title="Plot this army's move order on the map (send Army orders from the Armies tab)">
+            <Route size={13} /> Move order
           </Btn>
         )}
       </div>

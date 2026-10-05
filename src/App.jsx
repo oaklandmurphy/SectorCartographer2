@@ -12,7 +12,7 @@ import {
 } from "./lib/sectorRepo.js";
 import { buildSectorUpdates, buildCollectionUpdates, buildGroupUpdates, buildReadsUpdates, ARCHIVE_COLLECTIONS, SNAPSHOT_COLLECTIONS, READ_COLLECTIONS } from "./lib/sectorSchema.js";
 import { resolveViewer, canSee, canSeeSubmission, visibleFleets, friendlyFactionIds, visibleAgents, visibleArmies, visibleOrders, visibleActions, visibleMissions } from "./lib/visibility.js";
-import { craftInCarrier, withSquadrons, squadronsOf, commitDetachments, returnDetachments, survivingDetachments, incomingCraft } from "./lib/carriers.js";
+import { craftInCarrier, withSquadrons, squadronsOf, commitDetachments, returnDetachments, survivingDetachments, incomingCraft, commitArmyDivisions, returnArmyDivisions } from "./lib/carriers.js";
 import { moveShips, moveSquadron, moveVessel, disbandEmptyFleets, spawnFleet } from "./lib/fleets.js";
 import { effectiveMoveOrders } from "./lib/movement.js";
 import { eligibleSystemFor, systemCap, systemStagedTotal, adjustLine, applyReplenishments, replenishmentSummary } from "./lib/replenish.js";
@@ -1546,6 +1546,15 @@ export default function GalaxySectorMap() {
         return next;
       });
     }
+    // Army orders ride the same missions queue — their delayed survivors go
+    // back to their armies' rosters in the same step.
+    if (delayedMissions.some((m) => m.armyId)) {
+      setArmies((rs) => {
+        let next = rs;
+        delayedMissions.filter((m) => m.armyId).forEach((m) => { next = returnArmyDivisions(next, survivingDetachments(m)); });
+        return next;
+      });
+    }
     if (agentMoves.length > 0) {
       setAgents((as) => as.map((a) => {
         const m = agentMoves.find((x) => x.a.id === a.id);
@@ -1606,8 +1615,8 @@ export default function GalaxySectorMap() {
       if (lines.length > 0) lines.push("");
       lines.push("SQUADRON MISSIONS RESOLVED");
       resolvedMissionsNow.forEach((m) => {
-        const fleet = fleets.find((f) => f.id === m.fleetId);
-        lines.push(`  ${fleet ? fleet.name : "Fleet"}: "${m.text}"`);
+        const unit = m.armyId ? armies.find((r) => r.id === m.armyId) : fleets.find((f) => f.id === m.fleetId);
+        lines.push(`  ${unit ? unit.name : (m.armyId ? "Army" : "Fleet")}: "${m.text}"`);
       });
     }
     if (stagedReplen.length > 0) {
@@ -1801,6 +1810,29 @@ export default function GalaxySectorMap() {
       createdAt: Date.now(), resolvedAt: null,
     }]);
   }
+  // An Army order: the ground twin of a squadron order. A player commits
+  // divisions (whole or part) from one army to a free-text order for the GM to
+  // adjudicate on the mission odds table; same lock-in rules as submitMission.
+  function submitArmyMission(armyId, detachments, text) {
+    const army = armies.find((r) => r.id === armyId);
+    if (!army || !canOrderFor(army.factionId)) return;
+    const body = (text || "").trim();
+    if (!body) return;
+    const clean = (detachments || []).map((d) => {
+      const div = (army.divisions || []).find((x) => x.id === d.squadronId);
+      if (!div) return null;
+      const count = Math.min(Number(div.count) || 0, Math.max(0, Math.floor(Number(d.count) || 0)));
+      return count > 0 ? { shipId: army.id, squadronId: div.id, model: div.model || "", count } : null;
+    }).filter(Boolean);
+    if (clean.length === 0) return;
+    setArmies((rs) => commitArmyDivisions(rs, armyId, clean));
+    setMissions((ms) => [...ms, {
+      id: uid("msn"), factionId: army.factionId, armyId, text: body,
+      detachments: clean, status: "pending", resolution: null,
+      createdBy: viewer.roleId ? { roleId: viewer.roleId, roleName: viewer.roleName } : null,
+      createdAt: Date.now(), resolvedAt: null,
+    }]);
+  }
   // GM only — a submitted mission is locked in, so there is no player-side
   // withdraw (contrast removeAction, which a player can pull back while pending).
   // Deleting a still-pending one returns its committed craft, since nothing
@@ -1810,12 +1842,18 @@ export default function GalaxySectorMap() {
     if (!isGM) return;
     const m = missions.find((x) => x.id === id);
     if (!m) return;
-    if (m.status === "pending") setFleets((fs) => returnDetachments(fs, m.detachments || []));
+    if (m.status === "pending") {
+      setFleets((fs) => returnDetachments(fs, m.detachments || []));
+      if (m.armyId) setArmies((rs) => returnArmyDivisions(rs, m.detachments || []));
+    }
     // A delayed mission already has a ruling (see resolveMission), but its
     // survivors haven't been handed back yet — deleting it before Next Turn
     // reveals it is the only way to return them early, so do that here rather
     // than stranding those craft off the fleet's books forever.
-    else if (m.status === "delayed") setFleets((fs) => returnDetachments(fs, survivingDetachments(m)));
+    else if (m.status === "delayed") {
+      setFleets((fs) => returnDetachments(fs, survivingDetachments(m)));
+      if (m.armyId) setArmies((rs) => returnArmyDivisions(rs, survivingDetachments(m)));
+    }
     setMissions((ms) => ms.filter((x) => x.id !== id));
   }
   // GM: permanently delete an entry from a closed-out turn's archive (contrast
@@ -1840,7 +1878,10 @@ export default function GalaxySectorMap() {
     const m = missions.find((x) => x.id === id);
     if (!m || m.status !== "pending") return;
     const next = { ...m, status: delayed ? "delayed" : "resolved", resolution: resolution || null, resolvedAt: Date.now() };
-    if (!delayed) setFleets((fs) => returnDetachments(fs, survivingDetachments(next)));
+    if (!delayed) {
+      setFleets((fs) => returnDetachments(fs, survivingDetachments(next)));
+      if (m.armyId) setArmies((rs) => returnArmyDivisions(rs, survivingDetachments(next)));
+    }
     setMissions((ms) => ms.map((x) => (x.id === id ? next : x)));
   }
   // GM: fix up a resolved/delayed mission's outcome text after the fact (typo,
@@ -2678,10 +2719,11 @@ export default function GalaxySectorMap() {
         const seen = missionReads.find((r) => r.factionId === factionId && r.missionId === m.id);
         return !seen || seen.seenAt < (m.resolvedAt || 0);
       }).map((m) => {
+        const army = m.armyId ? armies.find((r) => r.id === m.armyId) : null;
         const fleet = fleets.find((f) => f.id === m.fleetId);
-        return { ...m, fleetName: fleet ? fleet.name : "Fleet" };
+        return { ...m, fleetName: army ? army.name : (fleet ? fleet.name : (m.armyId ? "Army" : "Fleet")) };
       }).sort((a, b) => (b.resolvedAt || 0) - (a.resolvedAt || 0));
-  }, [displayMissions, displayArchivedMissions, missionReads, fleets, viewer.roleFactionId]);
+  }, [displayMissions, displayArchivedMissions, missionReads, fleets, armies, viewer.roleFactionId]);
   // Replenishment notices for this faction's own fleets: records revealed by
   // nextTurn (revealedAt set) that this faction hasn't acknowledged since. Own-
   // faction only, routed by the record's factionId — unlike a fleet's position,
@@ -3092,6 +3134,8 @@ export default function GalaxySectorMap() {
             addArmy={addArmy} patchArmy={patchArmy} renameArmy={renameArmy} removeArmy={removeArmy}
             addDivision={addDivision} patchDivision={patchDivision} removeDivision={removeDivision}
             canOrderFor={canOrderFor} onOrderArmyMove={orderArmyMove} orders={displayOrders}
+            missions={displayMissions} archivedMissions={displayArchivedMissions} submitArmyMission={submitArmyMission}
+            loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
             viewerFactionId={viewer.roleFactionId}
           />
         )}
@@ -3137,7 +3181,8 @@ export default function GalaxySectorMap() {
             openArticle={goToCodex} acknowledgeArticle={markWikiSeen} acknowledgeAll={acknowledgeAllUpdates}
             resolvedActions={unseenResolvedActions} openAction={goToAgentAction}
             acknowledgeAction={markActionSeen} acknowledgeAllActions={acknowledgeAllActionUpdates}
-            resolvedMissions={unseenResolvedMissions} openMission={goToFleet}
+            resolvedMissions={unseenResolvedMissions}
+            openMission={(m) => (m.armyId ? goToArmy(m.armyId) : goToFleet(m.fleetId))}
             acknowledgeMission={markMissionSeen} acknowledgeAllMissions={acknowledgeAllMissionUpdates}
             replenishments={unseenReplenishments} openReplenishment={goToFleet}
             acknowledgeReplenishment={markReplenishmentSeen} acknowledgeAllReplenishments={acknowledgeAllReplenishmentUpdates} />
@@ -3150,9 +3195,9 @@ export default function GalaxySectorMap() {
           <ActionArchiveView
             actions={displayActions} archivedActions={displayArchivedActions}
             missions={displayMissions} archivedMissions={displayArchivedMissions}
-            agents={displayAgents} fleets={displayFleets} factions={factions} modifiers={modifiers}
+            agents={displayAgents} fleets={displayFleets} armies={displayArmies} factions={factions} modifiers={modifiers}
             turnNumber={turnNumber} isMobile={isMobile} viewer={viewer}
-            goToAgentAction={goToAgentAction} goToFleet={goToFleet}
+            goToAgentAction={goToAgentAction} goToFleet={goToFleet} goToArmy={goToArmy}
             loadOlderArchiveTurn={loadOlderArchiveTurn} canLoadOlderArchive={canLoadOlderArchive}
           />
         )}

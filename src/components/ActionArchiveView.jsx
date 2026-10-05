@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Archive, VenetianMask, Ship, Check, Clock, History, Flag, Filter, ExternalLink, Inbox } from "lucide-react";
+import { Archive, VenetianMask, Ship, Swords, Check, Clock, History, Flag, Filter, ExternalLink, Inbox } from "lucide-react";
 import { T, F, lbl, selStyle } from "../theme.js";
 import Btn from "./ui/Btn.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
@@ -21,8 +21,8 @@ const detachmentSummary = (m) => (m.detachments || [])
 
 export default function ActionArchiveView({
   actions, archivedActions, missions, archivedMissions,
-  agents, fleets, factions, modifiers, turnNumber, isMobile, viewer,
-  goToAgentAction, goToFleet, loadOlderArchiveTurn, canLoadOlderArchive,
+  agents, fleets, armies, factions, modifiers, turnNumber, isMobile, viewer,
+  goToAgentAction, goToFleet, goToArmy, loadOlderArchiveTurn, canLoadOlderArchive,
 }) {
   const [issuerFilter, setIssuerFilter] = useState("all"); // "all" | `${type}:${id}`
 
@@ -46,6 +46,11 @@ export default function ActionArchiveView({
     const f = (fleets || []).find((x) => x.id === fleetId);
     return f ? (f.name || "Fleet") : "Fleet (removed)";
   };
+  const armyLabel = (armyId) => {
+    const r = (armies || []).find((x) => x.id === armyId);
+    return r ? (r.name || "Army") : "Army (removed)";
+  };
+  const armyExists = (id) => (armies || []).some((r) => r.id === id);
   const modObj = (id) => (modifiers || []).find((m) => m.id === id) || null;
   const agentExists = (id) => (agents || []).some((a) => a.id === id);
   const fleetExists = (id) => (fleets || []).some((f) => f.id === id);
@@ -66,7 +71,8 @@ export default function ActionArchiveView({
     });
     const pushMission = (m, turn) => out.push({
       kind: "mission", id: m.id, turn, factionId: m.factionId,
-      issuerType: "fleet", issuerId: m.fleetId, issuerLabel: fleetLabel(m.fleetId),
+      issuerType: m.armyId ? "army" : "fleet", issuerId: m.armyId || m.fleetId,
+      issuerLabel: m.armyId ? armyLabel(m.armyId) : fleetLabel(m.fleetId),
       status: m.status, resolution: m.resolution, text: m.text,
       detachments: m.detachments || [],
       createdAt: m.createdAt || 0, resolvedAt: m.resolvedAt || 0,
@@ -77,24 +83,25 @@ export default function ActionArchiveView({
     (archivedMissions || []).forEach((m) => pushMission(m, m.turn || 0));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actions, archivedActions, missions, archivedMissions, agents, fleets, factions, turnNumber]);
+  }, [actions, archivedActions, missions, archivedMissions, agents, fleets, armies, factions, turnNumber]);
 
   // The distinct issuers present across the player's submissions — the options
   // the dropdown offers, split into an Agents group and a Fleets group.
-  const { agentIssuers, fleetIssuers } = useMemo(() => {
+  const { agentIssuers, fleetIssuers, armyIssuers } = useMemo(() => {
     const map = new Map(); // `${type}:${id}` -> { key, type, id, label }
     for (const it of items) {
       const key = `${it.issuerType}:${it.issuerId}`;
       if (!map.has(key)) map.set(key, { key, type: it.issuerType, id: it.issuerId, label: it.issuerLabel });
     }
     const all = [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
-    return { agentIssuers: all.filter((x) => x.type === "agent"), fleetIssuers: all.filter((x) => x.type === "fleet") };
+    return { agentIssuers: all.filter((x) => x.type === "agent"), fleetIssuers: all.filter((x) => x.type === "fleet"),
+      armyIssuers: all.filter((x) => x.type === "army") };
   }, [items]);
 
   // A stale filter (its agent/fleet no longer appears in any submission) reads as
   // "All" rather than silently showing nothing.
   const filterValid = issuerFilter === "all"
-    || [...agentIssuers, ...fleetIssuers].some((x) => x.key === issuerFilter);
+    || [...agentIssuers, ...fleetIssuers, ...armyIssuers].some((x) => x.key === issuerFilter);
   const effFilter = filterValid ? issuerFilter : "all";
 
   const filtered = effFilter === "all"
@@ -128,8 +135,9 @@ export default function ActionArchiveView({
     // been ruled on but held back — it must read as still-open to the player and
     // never show its resolution (matches AgentsView / FleetView).
     const settled = it.status === "resolved";
-    const IssuerIcon = isAction ? VenetianMask : Ship;
-    const canOpen = isAction ? agentExists(it.issuerId) : fleetExists(it.issuerId);
+    const isArmy = it.issuerType === "army";
+    const IssuerIcon = isAction ? VenetianMask : isArmy ? Swords : Ship;
+    const canOpen = isAction ? agentExists(it.issuerId) : isArmy ? armyExists(it.issuerId) : fleetExists(it.issuerId);
     return (
       <div key={it.id} style={{ border: `1px solid ${settled ? T.line : color}`, borderRadius: 2,
         background: T.panel2, display: "flex", flexDirection: "column", gap: 7, padding: isMobile ? 9 : 11 }}>
@@ -141,7 +149,7 @@ export default function ActionArchiveView({
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.issuerLabel}</span>
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, ...lbl, color: T.faint }}>
-            {isAction ? "Action" : "Squadron Order"}
+            {isAction ? "Action" : isArmy ? "Army Order" : "Squadron Order"}
           </span>
           {fac && (
             <span title={fac.name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: T.mut }}>
@@ -208,14 +216,14 @@ export default function ActionArchiveView({
         )}
 
         {/* jump to where this submission lives */}
-        {canOpen && (goToAgentAction || goToFleet) && (
+        {canOpen && (goToAgentAction || goToFleet || goToArmy) && (
           <div style={{ display: "flex" }}>
             <Btn style={{ marginLeft: "auto" }}
               onClick={() => (isAction
                 ? goToAgentAction && goToAgentAction(it.issuerId, it.factionId)
-                : goToFleet && goToFleet(it.issuerId))}
-              title={isAction ? "Open this agent in the Agents tab" : "Open this fleet in the Fleets tab"}>
-              <ExternalLink size={12} /> {isAction ? "Agent" : "Fleet"}
+                : isArmy ? goToArmy && goToArmy(it.issuerId) : goToFleet && goToFleet(it.issuerId))}
+              title={isAction ? "Open this agent in the Agents tab" : isArmy ? "Open this army in the Armies tab" : "Open this fleet in the Fleets tab"}>
+              <ExternalLink size={12} /> {isAction ? "Agent" : isArmy ? "Army" : "Fleet"}
             </Btn>
           </div>
         )}
@@ -241,9 +249,9 @@ export default function ActionArchiveView({
       <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
         <Filter size={13} style={{ color: T.mut }} />
         <select value={effFilter} onChange={(e) => setIssuerFilter(e.target.value)}
-          title="Filter to a single agent or fleet"
+          title="Filter to a single agent, fleet or army"
           style={{ ...selStyle, width: "auto", minWidth: isMobile ? 150 : 190, fontFamily: F.mono, fontSize: 11.5 }}>
-          <option value="all">All agents &amp; fleets</option>
+          <option value="all">All agents, fleets &amp; armies</option>
           {agentIssuers.length > 0 && (
             <optgroup label="Agents">
               {agentIssuers.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
@@ -252,6 +260,11 @@ export default function ActionArchiveView({
           {fleetIssuers.length > 0 && (
             <optgroup label="Fleets">
               {fleetIssuers.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </optgroup>
+          )}
+          {armyIssuers.length > 0 && (
+            <optgroup label="Armies">
+              {armyIssuers.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
             </optgroup>
           )}
         </select>
@@ -287,7 +300,7 @@ export default function ActionArchiveView({
               gap: 10, color: T.faint, padding: "48px 24px", textAlign: "center" }}>
               <Inbox size={30} strokeWidth={1.3} />
               <div style={{ fontSize: 11.5, lineHeight: 1.6, maxWidth: 320 }}>
-                No submissions from this {effFilter.startsWith("agent:") ? "agent" : "fleet"}. Choose “All agents &amp; fleets” to see everything.
+                No submissions from this {effFilter.startsWith("agent:") ? "agent" : effFilter.startsWith("army:") ? "army" : "fleet"}. Choose “All agents, fleets &amp; armies” to see everything.
               </div>
             </div>
           ) : (

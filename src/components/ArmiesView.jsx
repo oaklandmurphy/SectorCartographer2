@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Swords, Anchor, Plus, X, StickyNote, Route, ChevronDown, ChevronUp, Trash2, Check, Lock } from "lucide-react";
-import { T, inputStyle, selStyle, lbl, cut } from "../theme.js";
+import { Swords, Anchor, Plus, X, StickyNote, Route, ChevronDown, ChevronUp, Trash2, Check, Clock, Lock, History } from "lucide-react";
+import { T, F, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
+import SquadronOrderModal from "./SquadronOrderModal.jsx";
+import MissionResolution from "./ui/MissionResolution.jsx";
 
 // Every division model already fielded somewhere in the sector — feeds the model
 // field's autocomplete so a type can be reused without being retyped into a
@@ -87,11 +89,12 @@ function ArmyPicker({ armies, value, onChange, factionById, systems, isMobile, v
 }
 
 // Who commands what on the ground: one army at a time, with its divisions laid
-// out below its header. Mirrors FleetView (picker bar, header with rename + order
-// button, a roster of assigned units) — an army's divisions are what a carrier's
-// squadrons are. The GM creates armies and assigns divisions; the owning
-// faction's players rename theirs and send it Army orders (a move order plotted
-// on the map, with notes for what it should do on arrival).
+// out below its header. Mirrors FleetView (picker bar, header with rename and
+// order buttons, a roster of assigned units) — an army's divisions are what a
+// carrier's squadrons are. The GM creates armies and assigns divisions; the
+// owning faction's players rename theirs, send it Army orders (the ground twin
+// of a squadron order: commit divisions to a free-text order the GM resolves on
+// the mission odds table) and plot move orders on the map.
 //
 // Like FleetView, the pane renderers are plain functions returning JSX (called,
 // not mounted as <Components>) so typing in an input never remounts the subtree.
@@ -101,8 +104,12 @@ export default function ArmiesView({
   addArmy, patchArmy, renameArmy, removeArmy,
   addDivision, patchDivision, removeDivision,
   canOrderFor, onOrderArmyMove, orders = [], viewerFactionId = null,
+  missions = [], archivedMissions = [], submitArmyMission, loadOlderArchiveTurn, canLoadOlderArchive,
 }) {
   const confirm = useConfirm();
+  const [orderArmyId, setOrderArmyId] = useState(null); // army whose Army-order composer is open
+  const [historyOpen, setHistoryOpen] = useState({}); // per army: past orders revealed
+  const orderArmy = armies.find((r) => r.id === orderArmyId) || null;
   const [newFactionId, setNewFactionId] = useState("");
   const models = useMemo(() => knownDivisionModels(armies), [armies]);
   const MODELS_ID = "armiesview-models";
@@ -131,11 +138,18 @@ export default function ArmiesView({
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name || "Unnamed army"}</span>
           )}
           {canGiveOrder && (
-            <Btn kind="primary" onClick={() => onOrderArmyMove(r.id)} disabled={!r.systemId}
-              title={r.systemId ? "Jump to the map, zoomed in on this army, ready to plot its order"
-                : "This army has no location to order from yet"}
+            <Btn kind="primary" onClick={() => setOrderArmyId(r.id)} disabled={divisionsIn(r) === 0}
+              title={divisionsIn(r) === 0 ? "No divisions available in this army" : "Send divisions on an order"}
               style={{ marginLeft: "auto", flexShrink: 0 }}>
-              <Route size={12} /> {!isMobile && "Army order"}
+              <Swords size={12} /> {!isMobile && "Army order"}
+            </Btn>
+          )}
+          {canGiveOrder && (
+            <Btn onClick={() => onOrderArmyMove(r.id)} disabled={!r.systemId}
+              title={r.systemId ? "Jump to the map, zoomed in on this army, ready to plot its move order"
+                : "This army has no location to move from yet"}
+              style={{ flexShrink: 0 }}>
+              <Route size={12} /> {!isMobile && "Move"}
             </Btn>
           )}
         </div>
@@ -222,6 +236,63 @@ export default function ArmiesView({
     );
   };
 
+  /* ------------------------------------------------ one army order (a squadron-mission twin) */
+  const detachmentSummary = (m) => (m.detachments || [])
+    .map((d) => `${d.count}×${d.model || "unnamed"}`).join(", ");
+  const missionCard = (m) => {
+    const resolved = m.status === "resolved";
+    return (
+      <div key={m.id} style={{ border: `1px solid ${resolved ? T.line : T.accent}`, borderRadius: 2,
+        background: T.panel2, display: "flex", flexDirection: "column", gap: 7, padding: 9 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9.5, fontWeight: 700,
+            letterSpacing: ".06em", textTransform: "uppercase", color: resolved ? T.accent : T.amber }}>
+            {resolved ? <Check size={11} /> : <Clock size={11} />}{resolved ? "Resolved" : "Under orders"}
+          </span>
+          <span className="mono" style={{ fontSize: 10.5, color: T.mut }}>{detachmentSummary(m)}</span>
+        </div>
+        <div style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 1.65, color: T.text, whiteSpace: "pre-wrap",
+          borderLeft: `2px solid ${T.accent}`, paddingLeft: 12 }}>{m.text}</div>
+        {resolved && (
+          <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 6 }}>
+            {m.resolution
+              ? <MissionResolution resolution={m.resolution} />
+              : <div style={{ fontSize: 11.5, color: T.mut }}>Resolved (no ruling recorded).</div>}
+          </div>
+        )}
+      </div>
+    );
+  };
+  const ordersSection = (r) => {
+    const own = missions.filter((m) => m.armyId === r.id);
+    const pending = own.filter((m) => m.status !== "resolved").sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const resolved = own.filter((m) => m.status === "resolved").sort((a, b) => (b.resolvedAt || 0) - (a.resolvedAt || 0));
+    const past = archivedMissions.filter((m) => m.armyId === r.id).sort((a, b) => (b.turnEndedAt || 0) - (a.turnEndedAt || 0));
+    if (own.length === 0 && past.length === 0 && !canLoadOlderArchive) return null;
+    const open = !!historyOpen[r.id];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 8, marginTop: 2, borderTop: `1px solid ${T.line}` }}>
+        <span style={{ ...lbl, display: "flex", alignItems: "center", gap: 5 }}><Swords size={11} /> Army orders</span>
+        {pending.map(missionCard)}
+        {resolved.map(missionCard)}
+        {(past.length > 0 || canLoadOlderArchive) && (
+          <>
+            <Btn onClick={() => setHistoryOpen((o) => ({ ...o, [r.id]: !o[r.id] }))}
+              title={open ? "Hide previous turns' orders" : "See this army's orders from previous turns"}
+              style={{ justifyContent: "center", marginTop: 2 }}>
+              <History size={13} /> {open ? "Hide" : "Show"} past orders{past.length > 0 ? ` (${past.length})` : ""}
+              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </Btn>
+            {open && past.map(missionCard)}
+            {open && loadOlderArchiveTurn && canLoadOlderArchive && (
+              <Btn onClick={loadOlderArchiveTurn} style={{ justifyContent: "center" }}>+ Load an earlier turn</Btn>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const pane = (r) => {
     const reveal = canEdit || r.factionId === viewerFactionId;
     return (
@@ -253,6 +324,7 @@ export default function ArmiesView({
             </div>
           )}
           {orderCard(r)}
+          {ordersSection(r)}
           {(canEdit || r.notes) && reveal && (
             <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -310,6 +382,11 @@ export default function ArmiesView({
         {models.map((m) => <option key={m} value={m} />)}
       </datalist>
       {bar}
+      {orderArmy && (
+        <SquadronOrderModal army={orderArmy} isMobile={isMobile}
+          onClose={() => setOrderArmyId(null)}
+          onSubmit={(detachments, text) => { submitArmyMission(orderArmy.id, detachments, text); setOrderArmyId(null); }} />
+      )}
       {!army ? (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center",
           justifyContent: "center", gap: 12, color: T.faint, padding: 24, textAlign: "center" }}>

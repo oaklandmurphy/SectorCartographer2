@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { X, Rocket, Send, TriangleAlert } from "lucide-react";
+import { X, Rocket, Swords, Send, TriangleAlert } from "lucide-react";
 import { T, F, panelStyle, inputStyle, lbl, cut } from "../theme.js";
 import { squadronsOf } from "../lib/carriers.js";
 import { useDraft } from "../hooks/useDraft.js";
@@ -12,11 +12,19 @@ import AutoTextarea from "./ui/AutoTextarea.jsx";
 // come straight out of their squadrons' counts the moment this submits (see
 // App.jsx submitMission), which is what makes them unavailable for a second
 // mission until this one is resolved or withdrawn.
-export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit }) {
+//
+// The same composer serves Army orders: pass `army` instead of `fleet` and the
+// rows become that army's divisions (an army has no carriers, so each row is
+// just a division type), with the wording to match.
+export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onSubmit }) {
+  const unit = army || fleet;
+  const isArmy = !!army;
+  const Icon = isArmy ? Swords : Rocket;
+  const noun = isArmy ? "division" : "craft";
   // Kept in localStorage (keyed per fleet) so a half-written order survives
   // closing this modal to check something else, or FleetView unmounting
   // entirely from a tab switch — cleared only once the order actually submits.
-  const [draft, setDraft, clearDraft] = useDraft(`galaxy-sector-draft-squadron-order:${fleet.id}:v1`, { counts: {}, text: "" });
+  const [draft, setDraft, clearDraft] = useDraft(`galaxy-sector-draft-${isArmy ? "army" : "squadron"}-order:${unit.id}:v1`, { counts: {}, text: "" });
   const counts = draft.counts; // squadronId -> typed text
   const text = draft.text;
   const setCounts = (next) => setDraft((d) => ({ ...d, counts: typeof next === "function" ? next(d.counts) : next }));
@@ -27,6 +35,13 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
   // nothing to offer this mission, so it's left off the list entirely.
   const rows = useMemo(() => {
     const out = [];
+    if (isArmy) {
+      for (const d of army.divisions || []) {
+        const avail = Number(d.count) || 0;
+        if (avail > 0) out.push({ shipId: army.id, shipName: army.name, squadronId: d.id, model: d.model, avail });
+      }
+      return out;
+    }
     for (const sh of fleet.ships || []) {
       for (const sq of squadronsOf(sh)) {
         const avail = Number(sq.count) || 0;
@@ -34,7 +49,7 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
       }
     }
     return out;
-  }, [fleet]);
+  }, [fleet, army]);
 
   const commitFor = (row) => Math.min(row.avail, Math.max(0, Math.floor(Number(counts[row.squadronId]) || 0)));
   const total = rows.reduce((n, r) => n + commitFor(r), 0);
@@ -62,10 +77,10 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px",
           borderBottom: `2px solid ${T.line}`, flexShrink: 0 }}>
-          <Rocket size={16} color={T.accent} />
+          <Icon size={16} color={T.accent} />
           <div className="stencil" style={{ fontSize: 15, letterSpacing: ".05em", color: T.text, flex: 1, minWidth: 0,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Squadron order — {fleet.name}
+            {isArmy ? "Army order" : "Squadron order"} — {unit.name}
           </div>
           <button onClick={onClose} title="Cancel"
             style={{ background: "none", border: "none", color: T.faint, cursor: "pointer", padding: 2 }}>
@@ -77,10 +92,12 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
           display: "flex", flexDirection: "column", gap: 12 }}>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={lbl}>Craft to commit</span>
+            <span style={lbl}>{isArmy ? "Divisions to commit" : "Craft to commit"}</span>
             {rows.length === 0 && (
               <div style={{ fontSize: 11.5, color: T.faint, padding: "10px 0" }}>
-                No craft available in this fleet's hangars — every squadron is empty or already on a mission.
+                {isArmy
+                  ? "No divisions available in this army — every division is already committed to an order."
+                  : "No craft available in this fleet's hangars — every squadron is empty or already on a mission."}
               </div>
             )}
             {rows.map((r) => {
@@ -92,7 +109,7 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, color: T.text, overflow: "hidden", textOverflow: "ellipsis",
                       whiteSpace: "nowrap" }}>
-                      {r.model || <span style={{ color: T.faint, fontStyle: "italic" }}>unnamed model</span>}
+                      {r.model || <span style={{ color: T.faint, fontStyle: "italic" }}>{isArmy ? "unnamed division" : "unnamed model"}</span>}
                     </div>
                     <div className="mono" style={{ fontSize: 10, color: T.faint }}>
                       {r.shipName} · {r.avail} available
@@ -116,7 +133,7 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={lbl}>Mission</span>
             <AutoTextarea value={text} onChange={(e) => setText(e.target.value)} autoFocus
-              placeholder="Describe what this squadron order should attempt…"
+              placeholder={isArmy ? "Describe what this army order should attempt…" : "Describe what this squadron order should attempt…"}
               style={{ ...inputStyle, minHeight: 80, resize: "vertical",
                 fontFamily: F.mono,
                 fontSize: 14, lineHeight: 1.65, padding: 10 }} />
@@ -127,7 +144,7 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
             <TriangleAlert size={14} style={{ color: T.amber, flexShrink: 0, marginTop: 1 }} />
             <div style={{ fontSize: 11.5, color: T.mut, lineHeight: 1.5 }}>
               Once submitted, this order is locked in — you won't be able to cancel it or get the
-              committed craft back until the GM resolves the mission.
+              committed {noun === "craft" ? "craft" : "divisions"} back until the GM resolves the mission.
             </div>
           </div>
         </div>
@@ -135,12 +152,12 @@ export default function SquadronOrderModal({ fleet, isMobile, onClose, onSubmit 
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
           borderTop: `2px solid ${T.line}`, flexShrink: 0 }}>
           <span className="mono" style={{ fontSize: 11.5, color: total > 0 ? T.accent : T.faint }}>
-            {total} craft committed
+            {total} {noun}{isArmy && total !== 1 ? "s" : ""} committed
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             <Btn onClick={onClose}>Cancel</Btn>
             <Btn kind="primary" onClick={submit} disabled={!text.trim() || total === 0}
-              title={total === 0 ? "Commit at least one craft" : !text.trim() ? "Describe the mission first" : "Send this order to the GM"}>
+              title={total === 0 ? `Commit at least one ${noun}` : !text.trim() ? "Describe the mission first" : "Send this order to the GM"}>
               <Send size={13} /> Submit
             </Btn>
           </div>

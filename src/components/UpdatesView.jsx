@@ -97,7 +97,7 @@ export default function UpdatesView({
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <SectionHeader icon={<Ship size={18} color={T.accent} />} label="Squadron missions resolved"
+              <SectionHeader icon={<Ship size={18} color={T.accent} />} label="Squadron & army orders resolved"
                 count={missions.length} isMobile={isMobile} onAcknowledgeAll={acknowledgeAllMissions} />
               {missions.length === 0 ? (
                 <div style={{ border: `1px dashed ${T.line}`, color: T.faint, padding: "16px", textAlign: "center", fontSize: 12 }}>
@@ -110,7 +110,7 @@ export default function UpdatesView({
                   subtitle={m.fleetName}
                   when={`Resolved ${dateTime(m.resolvedAt)}`}
                   onAcknowledge={() => acknowledgeMission(m)}
-                  onOpen={() => openMission(m.fleetId)}
+                  onOpen={() => openMission(m)}
                   openLabel="View" />
               ))}
             </div>
