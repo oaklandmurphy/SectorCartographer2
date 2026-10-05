@@ -15,8 +15,11 @@ Five views, switched from the toolbar and each with its own URL:
 
 - **Map** — the sector itself. Place star systems, connect them with hyperlanes,
   drop fleet markers, and draw freehand over the top for borders and staging
-  arrows. Pan, zoom, and drag anything; below 25% zoom systems collapse to plain
-  markers so a large sector stays readable.
+  arrows. Pan, zoom, and drag anything; below 45% zoom systems collapse to plain
+  markers so a large sector stays readable, and at 160% or closer each system opens into its
+  **subregions**: a circular main node (`Primag-main`) ringed by a GM-set number of pie slices
+  (`Primag-1`, `Primag-2`...). Fleets and agents are tied to a subregion; drop one into a slice
+  when zoomed in, or pick it from the fleet/agent popup.
 - **Fleets** — who commands what. A fleet's carriers, each carrier's hangar of
   squadrons, and a compare mode for reading two fleets side by side. Also home to
   the ship art library. See [Fleets, carriers & squadrons](#fleets-carriers--squadrons).

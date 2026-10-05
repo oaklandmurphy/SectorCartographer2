@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
 import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff } from "lucide-react";
 import { T, F, panelStyle, cut } from "./theme.js";
-import { KNOWN_CODE_KEY, ROLE_COLORS, DEFAULT_SQUADRON_SIZE, GM_RECIPIENT, MIN_ZOOM, MAX_ZOOM } from "./constants.js";
+import { KNOWN_CODE_KEY, ROLE_COLORS, DEFAULT_SQUADRON_SIZE, GM_RECIPIENT, MIN_ZOOM, MAX_ZOOM, DETAIL_ZOOM } from "./constants.js";
+import { detailPositions, subregionAt, storedSubregion } from "./lib/subregions.js";
 import { storage } from "./lib/storage.js";
 import { fitView } from "./lib/fitView.js";
 import {
@@ -392,7 +393,7 @@ export default function GalaxySectorMap() {
   function addSystemAt(wx, wy) {
     if (!editingEnabled) return;
     const id = uid("sys");
-    setSystems((ss) => [...ss, { id, name: "New System", x: wx, y: wy, factionId: "fac_none", markers: [] }]);
+    setSystems((ss) => [...ss, { id, name: "New System", x: wx, y: wy, factionId: "fac_none", markers: [], subregions: 0 }]);
     setMode("select"); setSelFleet(null); setSelSystem(id);
   }
   function addSystemCenter() {
@@ -413,18 +414,18 @@ export default function GalaxySectorMap() {
     if (!editingEnabled) return;
     const sys = systems.find((s) => s.id === sysId);
     const id = uid("flt");
-    setFleets((fs) => [...fs, { id, name: "New Fleet", factionId: sys.factionId, systemId: sysId, x: sys.x, y: sys.y, ships: [] }]);
+    setFleets((fs) => [...fs, { id, name: "New Fleet", factionId: sys.factionId, systemId: sysId, subregion: null, x: sys.x, y: sys.y, ships: [] }]);
     setSelSystem(null); setSelFleet(id);
   }
   function deleteSystem(id) {
     if (!editingEnabled) return;
     const sys = systems.find((s) => s.id === id);
-    setFleets((fs) => fs.map((f) => (f.systemId === id ? { ...f, systemId: null, x: sys.x + 40, y: sys.y + 40 } : f)));
+    setFleets((fs) => fs.map((f) => (f.systemId === id ? { ...f, systemId: null, subregion: null, x: sys.x + 40, y: sys.y + 40 } : f)));
     setLinks((ls) => ls.filter((l) => l.a !== id && l.b !== id));
     setSystems((ss) => ss.filter((s) => s.id !== id));
     // An agent parked at this system becomes unplaced; any order routing through
     // it drops that stop so no path points at a system that's gone.
-    setAgents((as) => as.map((a) => (a.systemId === id ? { ...a, systemId: null } : a)));
+    setAgents((as) => as.map((a) => (a.systemId === id ? { ...a, systemId: null, subregion: null } : a)));
     setOrders((os) => os.map((o) => (o.path.includes(id) ? { ...o, path: o.path.filter((s) => s !== id) } : o)));
     setSelSystem(null);
   }
@@ -1275,7 +1276,7 @@ export default function GalaxySectorMap() {
     // hasn't been granted canMoveAgents can still edit name/notes/icon, just
     // not systemId. Belt-and-braces alongside the dropdowns only rendering
     // for players who already have this, same reasoning as onAgentSnap.
-    if ("systemId" in p && !canPlaceAgents(a.factionId)) return;
+    if (("systemId" in p || "subregion" in p) && !canPlaceAgents(a.factionId)) return;
     setAgents((as) => as.map((x) => (x.id === id ? { ...x, ...p } : x)));
   }
   function removeAgent(id) {
@@ -1552,7 +1553,7 @@ export default function GalaxySectorMap() {
       setFleets((fs) => {
         let next = fleetMoves.length > 0 ? fs.map((f) => {
           const m = fleetMoves.find((x) => x.f.id === f.id);
-          return m ? { ...f, systemId: m.dest } : f;
+          return m ? { ...f, systemId: m.dest, subregion: null } : f;
         }) : fs;
         delayedMissions.forEach((m) => { next = returnDetachments(next, survivingDetachments(m)); });
         return next;
@@ -1561,7 +1562,7 @@ export default function GalaxySectorMap() {
     if (agentMoves.length > 0) {
       setAgents((as) => as.map((a) => {
         const m = agentMoves.find((x) => x.a.id === a.id);
-        return m ? { ...a, systemId: m.dest } : a;
+        return m ? { ...a, systemId: m.dest, subregion: null } : a;
       }));
     }
     if (ready.length > 0) setOrders((os) => os.filter((o) => !ready.includes(o)));
@@ -1749,11 +1750,11 @@ export default function GalaxySectorMap() {
     // back to fix something) never leaves two snapshots for one turn.
     const movedFleets = fleets.map((f) => {
       const m = fleetMoves.find((x) => x.f.id === f.id);
-      return m ? { ...f, systemId: m.dest } : f;
+      return m ? { ...f, systemId: m.dest, subregion: null } : f;
     });
     const movedAgents = agents.map((a) => {
       const m = agentMoves.find((x) => x.a.id === a.id);
-      return m ? { ...a, systemId: m.dest } : a;
+      return m ? { ...a, systemId: m.dest, subregion: null } : a;
     });
     const snapshot = captureBoardSnapshot({
       turn: turnNumber, systems, links, fleets: movedFleets, agents: movedAgents, factions, layers,
@@ -2372,6 +2373,25 @@ export default function GalaxySectorMap() {
     if (mode === "link") return;
     setSelSystem(null); setSelFleet(null); setSelAgent(id);
   }
+  // The system a dropped piece snaps to: nearest within range. Zoomed into
+  // detail the pie slices reach further out than the plate does, so the range
+  // widens to cover them.
+  function nearestSystem(systemsSnapshot, wx, wy) {
+    let best = null, bestD = view.scale >= DETAIL_ZOOM ? 90 : 62; // world units
+    for (const s of systemsSnapshot) {
+      const dd = Math.hypot(s.x - wx, s.y - wy);
+      if (dd < bestD) { bestD = dd; best = s; }
+    }
+    return best;
+  }
+  // Which subregion a dropped piece lands in. Only zoomed into detail can a
+  // drop pick a slice; dropped from further out it lands on the main node. A
+  // drop that found no system reverts the piece, slice and all.
+  function snapSubregion(best, piece) {
+    if (!best) return piece.subregion == null ? null : piece.subregion;
+    if (view.scale < DETAIL_ZOOM) return null;
+    return storedSubregion(subregionAt(best, piece.x, piece.y));
+  }
   // Fleets are hard-locked to systems — dropped within range of a system it
   // snaps there, otherwise it reverts to whichever system it was dragged from
   // (never left floating at an arbitrary point).
@@ -2379,12 +2399,8 @@ export default function GalaxySectorMap() {
     if (!editingEnabled) return;
     setFleets((fs) => fs.map((f) => {
       if (f.id !== id) return f;
-      let best = null, bestD = 62; // world units
-      for (const s of systemsSnapshot) {
-        const dd = Math.hypot(s.x - f.x, s.y - f.y);
-        if (dd < bestD) { bestD = dd; best = s; }
-      }
-      return { ...f, systemId: best ? best.id : origSystemId };
+      const best = nearestSystem(systemsSnapshot, f.x, f.y);
+      return { ...f, systemId: best ? best.id : origSystemId, subregion: snapSubregion(best, f) };
     }));
   }
   // Same idea as onFleetSnap, but permission is per-agent (own faction, or the
@@ -2397,12 +2413,8 @@ export default function GalaxySectorMap() {
     if (!agent || !canPlaceAgents(agent.factionId)) return;
     setAgents((as) => as.map((a) => {
       if (a.id !== id) return a;
-      let best = null, bestD = 62; // world units
-      for (const s of systemsSnapshot) {
-        const dd = Math.hypot(s.x - a.x, s.y - a.y);
-        if (dd < bestD) { bestD = dd; best = s; }
-      }
-      return { ...a, systemId: best ? best.id : origSystemId };
+      const best = nearestSystem(systemsSnapshot, a.x, a.y);
+      return { ...a, systemId: best ? best.id : origSystemId, subregion: snapSubregion(best, a) };
     }));
   }
   function onDeselectAll() { setSelSystem(null); setSelFleet(null); setSelAgent(null); setLinkSource(null); }
@@ -2514,13 +2526,17 @@ export default function GalaxySectorMap() {
      the full fleet list. A fleet hidden from the viewer must not occupy a slot
      in a system's fan-out: if it did, the gap it left between the visible fleets
      would let the viewer infer a hidden fleet is parked there. */
+  const detailZoom = view.scale >= DETAIL_ZOOM;
   const fleetPos = useMemo(() => {
+    // Zoomed into detail, pieces sit in their subregion instead of fanning around the plate.
+    const detail = detailZoom ? detailPositions(displayFleets, systems, "fleet") : {};
     const grouping = {};
     displayFleets.forEach((f) => { if (f.systemId) (grouping[f.systemId] = grouping[f.systemId] || []).push(f.id); });
     const out = {};
     displayFleets.forEach((f) => {
       if (f.systemId) {
         const sys = systems.find((s) => s.id === f.systemId);
+        if (sys && detail[f.id]) { out[f.id] = detail[f.id]; return; }
         if (sys) {
           const arr = grouping[f.systemId]; const idx = arr.indexOf(f.id); const n = arr.length;
           const ring = Math.floor(idx / 6); const idxInRing = idx % 6;
@@ -2536,7 +2552,7 @@ export default function GalaxySectorMap() {
       out[f.id] = { x: f.x, y: f.y };
     });
     return out;
-  }, [displayFleets, systems]);
+  }, [displayFleets, systems, detailZoom]);
 
   // Consumes focusMapFleetId (set by orderFleetMove above) once the map tab is
   // actually mounted: reads the canvas's real DOM size directly rather than
@@ -2570,6 +2586,7 @@ export default function GalaxySectorMap() {
      hidden from the viewer must not occupy a slot in a system's column, or the
      gap it left would betray that a covert agent is parked there. */
   const agentPos = useMemo(() => {
+    const detail = detailZoom ? detailPositions(displayAgents, systems, "agent") : {};
     const grouping = {};
     displayAgents.forEach((a) => { if (a.systemId) (grouping[a.systemId] = grouping[a.systemId] || []).push(a.id); });
     const out = {};
@@ -2580,6 +2597,7 @@ export default function GalaxySectorMap() {
     displayAgents.forEach((a) => {
       if (a.systemId) {
         const sys = systems.find((s) => s.id === a.systemId);
+        if (sys && detail[a.id]) { out[a.id] = detail[a.id]; return; }
         if (sys) {
           const arr = grouping[a.systemId]; const idx = arr.indexOf(a.id); const n = arr.length;
           const col = Math.floor(idx / MAX_PER_COL);
@@ -2592,7 +2610,7 @@ export default function GalaxySectorMap() {
       if (a.x != null && a.y != null) out[a.id] = { x: a.x, y: a.y };
     });
     return out;
-  }, [displayAgents, systems]);
+  }, [displayAgents, systems, detailZoom]);
 
   const displayOrders = useMemo(() => visibleOrders(orders, viewer), [orders, viewer]);
   const displayActions = useMemo(() => visibleActions(actions, viewer), [actions, viewer]);

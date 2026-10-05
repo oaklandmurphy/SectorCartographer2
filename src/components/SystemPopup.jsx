@@ -1,4 +1,4 @@
-import { Star, Plus, Trash2, X, Rocket, Zap, Fuel, Ghost } from "lucide-react";
+import { Star, Plus, Trash2, X, Rocket, Zap, Fuel, Ghost, PieChart } from "lucide-react";
 import { T, inputStyle, selStyle, lbl } from "../theme.js";
 import { ICONS, ICON_KEYS } from "../constants.js";
 import { uid } from "../utils/id.js";
@@ -6,6 +6,7 @@ import { useConfirm } from "../hooks/useConfirm.jsx";
 import Btn from "./ui/Btn.jsx";
 import MapPopup from "./ui/MapPopup.jsx";
 import CodexLink from "./CodexLink.jsx";
+import { subregionCount, MAX_SUBREGIONS } from "../lib/subregions.js";
 
 export default function SystemPopup({
   system, anchor, containerSize, isMobile, canEdit, isGM, factions, layers, factionById, layerById,
@@ -29,6 +30,20 @@ export default function SystemPopup({
             {factions.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
+        {canEdit && (
+          <div title={`Pie-slice subregions around the main node, named ${system.name}-1, ${system.name}-2... Visible when zoomed in close.`}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <PieChart size={13} color={subregionCount(system) > 0 ? T.accent : T.faint} />
+              <span style={lbl}>Subregions</span>
+              <input type="number" min={0} max={MAX_SUBREGIONS} value={subregionCount(system)}
+                onChange={(e) => patchSystem(system.id, { subregions: Math.max(0, Math.min(MAX_SUBREGIONS, Math.floor(Number(e.target.value) || 0))) })}
+                style={{ ...inputStyle, width: 52, padding: "3px 4px", textAlign: "center", marginLeft: "auto" }} />
+            </div>
+            <div style={{ fontSize: 10, color: T.faint, marginTop: 3 }}>
+              {system.name}-main{subregionCount(system) > 0 ? `, ${system.name}-1${subregionCount(system) > 1 ? ` to ${system.name}-${subregionCount(system)}` : ""}` : ""}
+            </div>
+          </div>
+        )}
         {isGM && (
           <div>
             <label style={{ display: "flex", alignItems: "center", gap: 7,
