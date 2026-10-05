@@ -1,7 +1,6 @@
 import { Star, Plus, Trash2, X, Rocket, Zap, Fuel, Ghost, PieChart } from "lucide-react";
 import { T, inputStyle, selStyle, lbl } from "../theme.js";
 import { ICONS, ICON_KEYS } from "../constants.js";
-import { uid } from "../utils/id.js";
 import { useConfirm } from "../hooks/useConfirm.jsx";
 import Btn from "./ui/Btn.jsx";
 import MapPopup from "./ui/MapPopup.jsx";
@@ -95,34 +94,6 @@ export default function SystemPopup({
           onChange={(id) => patchSystem(system.id, { wikiId: id })}
           onNavigate={goToCodex} onCreate={createEntry}
           createTitle={system.name} createCategory="locations" />
-        <div>
-          <div style={{ ...lbl, marginBottom: 5, display: "flex", justifyContent: "space-between" }}
-            title="Places within this system a squadron mission can target">
-            <span>Subregions</span><span style={{ color: T.faint }}>{(system.subregions || []).length}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {(system.subregions || []).map((r) => (
-              <div key={r.id} style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                <input value={r.name} disabled={!canEdit} placeholder="Subregion name"
-                  onChange={(e) => patchSystem(system.id, { subregions: system.subregions.map((x) => (x.id === r.id ? { ...x, name: e.target.value } : x)) })}
-                  style={{ ...inputStyle, padding: "3px 6px", flex: 1 }} />
-                {canEdit && (
-                  <button onClick={() => patchSystem(system.id, { subregions: system.subregions.filter((x) => x.id !== r.id) })}
-                    title="Remove subregion"
-                    style={{ background: "none", border: "none", color: T.danger, cursor: "pointer", padding: 2 }}>
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          {canEdit && (
-            <Btn onClick={() => patchSystem(system.id, { subregions: [...(system.subregions || []), { id: uid("sr"), name: "New subregion" }] })}
-              style={{ marginTop: 7, width: "100%", justifyContent: "center" }}>
-              <Plus size={14} /> Add subregion
-            </Btn>
-          )}
-        </div>
         <div>
           <div style={{ ...lbl, marginBottom: 5, display: "flex", justifyContent: "space-between" }}>
             <span>Status markers</span><span style={{ color: T.faint }}>{system.markers.length}</span>

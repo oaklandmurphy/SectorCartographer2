@@ -3,6 +3,7 @@ import { X, Rocket, Send, TriangleAlert } from "lucide-react";
 import { T, F, panelStyle, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { squadronsOf } from "../lib/carriers.js";
 import { MISSION_TYPES, targetableSystems } from "../lib/missionTypes.js";
+import { subregionOptions } from "../lib/subregions.js";
 import { useDraft } from "../hooks/useDraft.js";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
@@ -28,8 +29,8 @@ export default function SquadronOrderModal({ fleet, systems = [], links = [], is
   // longer exists, so it's validated against the live lists.
   const targetSystems = useMemo(() => targetableSystems(systems, links, fleet.systemId), [systems, links, fleet.systemId]);
   const targetSystem = targetSystems.find((s) => s.id === draft.systemId) || null;
-  const subregions = targetSystem ? targetSystem.subregions || [] : [];
-  const subregion = subregions.find((r) => r.id === draft.subregionId) || null;
+  const subregions = targetSystem ? subregionOptions(targetSystem) : [];
+  const subregion = subregions.find((r) => r.key === draft.subregionId) || null;
   const missionType = MISSION_TYPES.some((t) => t.id === draft.missionType) ? draft.missionType : "";
   const setSystem = (id) => setDraft((d) => ({ ...d, systemId: id, subregionId: "" }));
   const setSubregion = (id) => setDraft((d) => ({ ...d, subregionId: id }));
@@ -64,7 +65,7 @@ export default function SquadronOrderModal({ fleet, systems = [], links = [], is
       .filter((d) => d.count > 0);
     onSubmit(detachments, text, {
       missionType,
-      target: { systemId: targetSystem.id, systemName: targetSystem.name || "", subregionId: subregion.id, subregionName: subregion.name || "" },
+      target: { systemId: targetSystem.id, systemName: targetSystem.name || "", subregionId: subregion.key, subregionName: subregion.name },
     });
     clearDraft();
   };
@@ -153,10 +154,10 @@ export default function SquadronOrderModal({ fleet, systems = [], links = [], is
                     <option key={s.id} value={s.id}>{s.name || "Unnamed system"}{s.id === fleet.systemId ? " (current)" : ""}</option>
                   ))}
                 </select>
-                <select value={subregion ? subregion.id : ""} onChange={(e) => setSubregion(e.target.value)}
-                  disabled={!targetSystem || subregions.length === 0} style={{ ...selStyle, flex: 1, minWidth: 140 }}>
-                  <option value="">{targetSystem && subregions.length === 0 ? "No subregions" : "Select subregion…"}</option>
-                  {subregions.map((r) => <option key={r.id} value={r.id}>{r.name || "Unnamed subregion"}</option>)}
+                <select value={subregion ? subregion.key : ""} onChange={(e) => setSubregion(e.target.value)}
+                  disabled={!targetSystem} style={{ ...selStyle, flex: 1, minWidth: 140 }}>
+                  <option value="">Select subregion…</option>
+                  {subregions.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
                 </select>
               </div>
             )}

@@ -140,7 +140,7 @@ export function buildReadsUpdates(collections, prevObj, nextObj) {
 // `s.markers.map(...)` without a guard at every site.
 const defaults = {
   factions: { members: [], wikiId: null, isPhantom: false },
-  systems: { markers: [], subregions: [], factionId: "fac_none", hasJumpGate: false, hasOssite: false, ossiteTarget: 8, isPhantom: false },
+  systems: { markers: [], factionId: "fac_none", hasJumpGate: false, hasOssite: false, ossiteTarget: 8, isPhantom: false },
   fleets: { systemId: null },
   strokes: { pts: [] },
   // `body` is deliberately absent — a page's full text lives at its own path
@@ -344,8 +344,8 @@ const codecs = {
     decode: (s) => ({ ...readVis(s), squadrons: asArray(s.squadrons) }),
   },
   systems: {
-    encode: (s) => ({ ...s, markers: s.markers || [], subregions: s.subregions || [] }),
-    decode: (s) => ({ ...s, markers: asArray(s.markers), subregions: asArray(s.subregions) }),
+    encode: (s) => ({ ...s, markers: s.markers || [] }),
+    decode: (s) => ({ ...s, markers: asArray(s.markers) }),
   },
   factions: {
     encode: (f) => ({ ...f, members: f.members || [] }),

@@ -26,6 +26,7 @@ export function targetableSystems(systems, links, homeSystemId) {
 // "Scout · Kepler Reach / Outer Belt" for a mission, or "" for an older one
 // that predates targets and types.
 export function missionTargetLine(m) {
-  const where = m.target ? [m.target.systemName, m.target.subregionName].filter(Boolean).join(" / ") : "";
+  // Subregion names already lead with the system's name ("Primag-2").
+  const where = m.target ? (m.target.subregionName || m.target.systemName || "") : "";
   return [missionTypeLabel(m.missionType), where].filter(Boolean).join(" · ");
 }

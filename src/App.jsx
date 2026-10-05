@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
 import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff } from "lucide-react";
 import { T, F, panelStyle, cut } from "./theme.js";
 import { KNOWN_CODE_KEY, ROLE_COLORS, DEFAULT_SQUADRON_SIZE, GM_RECIPIENT, MIN_ZOOM, MAX_ZOOM, DETAIL_ZOOM } from "./constants.js";
-import { detailPositions, subregionAt, storedSubregion } from "./lib/subregions.js";
+import { detailPositions, subregionAt, storedSubregion, subregionOptions } from "./lib/subregions.js";
 import { storage } from "./lib/storage.js";
 import { fitView } from "./lib/fitView.js";
 import {
@@ -1818,7 +1818,7 @@ export default function GalaxySectorMap() {
     // reads correctly if the system or subregion is later renamed or removed.
     const missionType = spec && MISSION_TYPES.some((t) => t.id === spec.missionType) ? spec.missionType : null;
     const tSys = spec && spec.target && targetableSystems(systems, links, fleet.systemId).find((s) => s.id === spec.target.systemId);
-    const tSub = tSys && (tSys.subregions || []).find((r) => r.id === spec.target.subregionId);
+    const tSub = tSys && subregionOptions(tSys).find((r) => r.key === spec.target.subregionId);
     if (!missionType || !tSub) return;
     // Re-derive each detachment against the fleet as it stands right now and clamp
     // to what's actually available, rather than trusting counts the composer UI
@@ -1836,7 +1836,7 @@ export default function GalaxySectorMap() {
     setMissions((ms) => [...ms, {
       id: uid("msn"), factionId: fleet.factionId, fleetId, text: body,
       missionType,
-      target: { systemId: tSys.id, systemName: tSys.name || "", subregionId: tSub.id, subregionName: tSub.name || "" },
+      target: { systemId: tSys.id, systemName: tSys.name || "", subregionId: tSub.key, subregionName: tSub.name },
       detachments: clean, status: "pending", resolution: null,
       createdBy: viewer.roleId ? { roleId: viewer.roleId, roleName: viewer.roleName } : null,
       createdAt: Date.now(), resolvedAt: null,
