@@ -10,12 +10,13 @@ import MapPopup from "./ui/MapPopup.jsx";
 import ShipArt from "./ui/ShipArt.jsx";
 import VisibilityRow from "./VisibilityRow.jsx";
 import SquadronOrderModal from "./SquadronOrderModal.jsx";
+import { locationName, subregionCount, subregionKey, subregionOptions, storedSubregion } from "../lib/subregions.js";
 
 export default function FleetPopup({
   fleet, anchor, containerSize, isMobile, canEdit, isGM, factions, fleets, factionColor, home,
   patchFleet, renameFleet, addShip, patchShip, removeShip, moveShip, deleteFleet, onClose, onShipDragStart,
   addSquadron, patchSquadron, removeSquadron, goToFleet, roles, art = [],
-  canOrderFor, submitMission, onOpenFleetTransfer,
+  canOrderFor, submitMission, onOpenFleetTransfer, systems = [], links = [],
   incoming = null, viewerFactionId = null,
 }) {
   const confirm = useConfirm();
@@ -53,8 +54,17 @@ export default function FleetPopup({
         </div>
         <div style={{ fontSize: 10.5, color: T.mut, display: "flex", alignItems: "center", gap: 5 }}>
           <Anchor size={12} style={{ color: T.faint }} />
-          {home ? <span>Stationed at <b style={{ color: T.text }}>{home.name}</b></span> : <span>In transit</span>}
+          {home ? <span>Stationed at <b style={{ color: T.text }}>{locationName(home, fleet.subregion)}</b></span> : <span>In transit</span>}
         </div>
+        {home && canEdit && subregionCount(home) > 0 && (
+          <div>
+            <div style={lbl}>Subregion</div>
+            <select style={{ ...selStyle, marginTop: 4 }} value={subregionKey(home, fleet.subregion)}
+              onChange={(e) => patchFleet(fleet.id, { subregion: storedSubregion(e.target.value) })}>
+              {subregionOptions(home).map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
+            </select>
+          </div>
+        )}
 
         {/* the whole roster, with room to breathe — replaces the old per-fleet codex link */}
         <Btn onClick={() => goToFleet(fleet.id)} title="Open this fleet's full roster in the Fleet tab"
@@ -238,9 +248,9 @@ export default function FleetPopup({
         )}
     </MapPopup>
     {orderOpen && (
-      <SquadronOrderModal fleet={fleet} isMobile={isMobile}
+      <SquadronOrderModal fleet={fleet} systems={systems} links={links} isMobile={isMobile}
         onClose={() => setOrderOpen(false)}
-        onSubmit={(detachments, text) => { submitMission(fleet.id, detachments, text); setOrderOpen(false); }} />
+        onSubmit={(detachments, text, spec) => { submitMission(fleet.id, detachments, text, spec); setOrderOpen(false); }} />
     )}
     </>
   );

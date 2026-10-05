@@ -5,6 +5,7 @@ import { useConfirm } from "../hooks/useConfirm.jsx";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
 import MapPopup from "./ui/MapPopup.jsx";
+import { locationName, subregionCount, subregionKey, subregionOptions, storedSubregion } from "../lib/subregions.js";
 
 // The map's popup for an agent — the same fields as an AgentsView card, anchored
 // beside the agent's marker. Only the owning faction's players (and the GM) ever
@@ -24,7 +25,7 @@ export default function AgentPopup({
   const confirm = useConfirm();
   const members = (faction && faction.members) || [];
   const member = members.find((m) => m.id === agent.memberId) || null;
-  const systemName = (id) => (systems.find((s) => s.id === id) || {}).name || "";
+  const agentSystem = agent.systemId ? systems.find((s) => s.id === agent.systemId) : null;
   const Icon = AGENT_ICONS[agent.icon] || VenetianMask;
   return (
     <MapPopup anchor={anchor} containerSize={containerSize} isMobile={isMobile} width={288} gap={10}
@@ -61,12 +62,18 @@ export default function AgentPopup({
         </div>
         {canPlace ? (
           <select style={selStyle} value={agent.systemId || ""}
-            onChange={(e) => { if (e.target.value) patchAgent(agent.id, { systemId: e.target.value }); }}>
+            onChange={(e) => { if (e.target.value) patchAgent(agent.id, { systemId: e.target.value, subregion: null }); }}>
             {!agent.systemId && <option value="" disabled hidden>Unplaced — select a system</option>}
             {systems.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         ) : (
-          <div style={{ fontSize: 12.5, color: T.text }}>{agent.systemId ? systemName(agent.systemId) : "Unplaced"}</div>
+          <div style={{ fontSize: 12.5, color: T.text }}>{agent.systemId ? locationName(agentSystem, agent.subregion) : "Unplaced"}</div>
+        )}
+        {canPlace && agentSystem && subregionCount(agentSystem) > 0 && (
+          <select style={{ ...selStyle, marginTop: 6 }} value={subregionKey(agentSystem, agent.subregion)}
+            onChange={(e) => patchAgent(agent.id, { subregion: storedSubregion(e.target.value) })}>
+            {subregionOptions(agentSystem).map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
+          </select>
         )}
       </div>
 

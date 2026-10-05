@@ -2,6 +2,7 @@ import { VenetianMask, Swords } from "lucide-react";
 import { T, cut } from "../../theme.js";
 import { AGENT_ICONS } from "../../constants.js";
 import FactionSymbol from "../../lib/factionSymbols.jsx";
+import { subregionCount, subregionName, sliceAngles, slicePath, RING_OUT } from "../../lib/subregions.js";
 
 // The pure visuals for the three things that sit on the map — a system's
 // plate, a fleet's wedge, an agent's diamond — factored out of MapCanvas so a
@@ -13,7 +14,9 @@ import FactionSymbol from "../../lib/factionSymbols.jsx";
 // A system: a chamfered plate in the controlling faction's color with their
 // heraldry centered on it, or — zoomed out past OVERVIEW_ZOOM — a small plain
 // swatch. Caller positions and sizes the wrapping box; this fills it.
-export function SystemPlate({ factionId, factionColor, overview }) {
+// `round` (zoomed into detail) draws the system as its main-node circle, the
+// hub its subregion slices ring.
+export function SystemPlate({ factionId, factionColor, overview, round = false, symbolSize = 18 }) {
   if (overview) {
     return (
       <div style={{ position: "absolute", inset: 0, ...cut(3), display: "flex",
@@ -21,6 +24,20 @@ export function SystemPlate({ factionId, factionColor, overview }) {
         background: factionColor, border: `1px solid ${T.ink}`, boxShadow: "0 1px 3px rgba(0,0,0,.7)" }}>
         <FactionSymbol factionId={factionId} size={9} color={T.ink} />
       </div>
+    );
+  }
+  if (round) {
+    return (
+      <>
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%",
+          background: `radial-gradient(circle at 38% 30%, ${factionColor}, ${factionColor}bb 55%, #000 150%)`,
+          border: `2px solid ${T.ink}`,
+          boxShadow: "inset 0 2px 3px rgba(255,255,255,.16), inset 0 -4px 5px rgba(0,0,0,.55), 0 2px 5px rgba(0,0,0,.6)" }} />
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+          display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <FactionSymbol factionId={factionId} size={symbolSize} color={T.ink} />
+        </div>
+      </>
     );
   }
   return (
@@ -34,6 +51,38 @@ export function SystemPlate({ factionId, factionColor, overview }) {
         <FactionSymbol factionId={factionId} size={18} color={T.ink} />
       </div>
     </>
+  );
+}
+
+// The pie slices around a system's main node, drawn from the system's own
+// subregion count. Sized in screen pixels from the map scale so they track
+// zoom; the caller centers it on the system and leaves pointer events to the
+// pieces above. `lit` is the set of slice keys to highlight.
+export function SubregionRing({ system, factionColor, scale, lit }) {
+  const n = subregionCount(system);
+  if (n === 0) return null;
+  const size = RING_OUT * 2 * scale;
+  return (
+    <svg width={size} height={size} viewBox={`${-RING_OUT} ${-RING_OUT} ${RING_OUT * 2} ${RING_OUT * 2}`}
+      style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+        pointerEvents: "none", zIndex: -1, overflow: "visible" }}>
+      {Array.from({ length: n }, (_, k) => {
+        const i = k + 1; const on = lit && lit.has(String(i));
+        const { mid } = sliceAngles(i, n);
+        const r = RING_OUT - 8;
+        return (
+          <g key={i}>
+            <path d={slicePath(i, n)} fill={factionColor} fillOpacity={on ? 0.42 : 0.16}
+              stroke={factionColor} strokeOpacity={0.85} strokeWidth={1.2 / scale} fillRule="evenodd" />
+            <text x={Math.cos(mid) * r} y={Math.sin(mid) * r} textAnchor="middle" dominantBaseline="middle"
+              className="mono" fontSize={9 / scale} fontWeight="700" fill={T.text} stroke={T.ink}
+              strokeWidth={2.4 / scale} paintOrder="stroke" style={{ letterSpacing: ".04em" }}>
+              {subregionName(system, String(i))}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 

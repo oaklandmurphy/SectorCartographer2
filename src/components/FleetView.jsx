@@ -10,7 +10,9 @@ import AutoTextarea from "./ui/AutoTextarea.jsx";
 import ShipArt from "./ui/ShipArt.jsx";
 import ArtLibrary from "./ArtLibrary.jsx";
 import SquadronOrderModal from "./SquadronOrderModal.jsx";
+import { missionTargetLine } from "../lib/missionTypes.js";
 import MissionResolution from "./ui/MissionResolution.jsx";
+import { locationName } from "../lib/subregions.js";
 
 // The Fleet / Compare selectors up top. A native <select> can't color a row to
 // its faction or stack a second line of detail, so this is a small custom
@@ -55,7 +57,7 @@ function FleetPicker({ fleets, value, onChange, factionById, systems, isMobile,
           {fleet && (
             <span className="mono" style={{ display: "block", fontSize: 10, color: T.faint, marginTop: 1,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {fac.name || "No faction"} · {n} carrier{n === 1 ? "" : "s"} · {home ? home.name : "In transit"}
+              {fac.name || "No faction"} · {n} carrier{n === 1 ? "" : "s"} · {home ? locationName(home, fleet.subregion) : "In transit"}
             </span>
           )}
         </span>
@@ -103,7 +105,7 @@ function FleetPicker({ fleets, value, onChange, factionById, systems, isMobile,
 // returning JSX (called, not mounted as <Components>) — mounting them would
 // remount the subtree on every keystroke and drop focus out of the inputs.
 export default function FleetView({
-  fleets, systems, canEdit, isMobile, factionById, factions = [], patchFleet,
+  fleets, systems, links = [], canEdit, isMobile, factionById, factions = [], patchFleet,
   primaryId, setPrimaryId, compareId, setCompareId,
   addShip, patchShip, removeShip, renameFleet,
   addSquadron, patchSquadron, removeSquadron,
@@ -368,7 +370,7 @@ export default function FleetView({
           )}
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Anchor size={11} style={{ color: T.faint }} />
-            {home ? home.name : "In transit"}
+            {home ? locationName(home, fleet.subregion) : "In transit"}
           </span>
           <span className="mono" style={{ color: T.faint }}>
             {n} carrier{n === 1 ? "" : "s"} · {shownFleetCraft} craft
@@ -395,6 +397,9 @@ export default function FleetView({
           </span>
           <span className="mono" style={{ fontSize: 10.5, color: T.mut }}>{detachmentSummary(m)}</span>
         </div>
+        {missionTargetLine(m) && (
+          <div className="mono" style={{ fontSize: 10.5, color: T.accent }}>{missionTargetLine(m)}</div>
+        )}
         <div style={{ fontFamily: F.mono,
           fontSize: 14, lineHeight: 1.65, color: T.text, whiteSpace: "pre-wrap",
           borderLeft: `2px solid ${T.accent}`, paddingLeft: 12 }}>{m.text}</div>
@@ -541,9 +546,9 @@ export default function FleetView({
         </div>
       )}
       {orderFleet && (
-        <SquadronOrderModal fleet={orderFleet} isMobile={isMobile}
+        <SquadronOrderModal fleet={orderFleet} systems={systems} links={links} isMobile={isMobile}
           onClose={() => setOrderFleetId(null)}
-          onSubmit={(detachments, text) => { submitMission(orderFleet.id, detachments, text); setOrderFleetId(null); }} />
+          onSubmit={(detachments, text, spec) => { submitMission(orderFleet.id, detachments, text, spec); setOrderFleetId(null); }} />
       )}
     </div>
   );

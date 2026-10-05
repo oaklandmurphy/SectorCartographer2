@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { Star, Ghost } from "lucide-react";
 import { T, cut, sceneBackdrop, floatingPanel } from "../theme.js";
-import { ICONS, OVERVIEW_ZOOM } from "../constants.js";
+import { ICONS, OVERVIEW_ZOOM, DETAIL_ZOOM } from "../constants.js";
 import { craftInFleet } from "../lib/carriers.js";
-import { SystemPlate, SystemLabel, FleetGlyph, AgentGlyph, ArmyGlyph, LINK_LINE_PROPS } from "./ui/MapPieces.jsx";
+import { subregionCount, subregionKey, MAIN_R, RING_OUT } from "../lib/subregions.js";
+import { SystemPlate, SystemLabel, SubregionRing, FleetGlyph, AgentGlyph, ArmyGlyph, LINK_LINE_PROPS } from "./ui/MapPieces.jsx";
 import TargetBrackets from "./ui/TargetBrackets.jsx";
 import SystemGlow from "./ui/SystemGlow.jsx";
 import Starfield from "./ui/Starfield.jsx";
@@ -46,6 +47,7 @@ export default function MapCanvas({
   incoming, viewerFactionId,
 }) {
   const overview = view.scale <= OVERVIEW_ZOOM; // zoomed out far enough — simplify systems to plain markers
+  const detail = view.scale >= DETAIL_ZOOM;     // zoomed in close — systems open up into their subregions
   const selSystemObj = systems.find((s) => s.id === selSystem);
   const selFleetObj = fleets.find((f) => f.id === selFleet);
   const selAgentObj = (agents || []).find((a) => a.id === selAgent);
@@ -260,7 +262,15 @@ export default function MapCanvas({
         const isFleetHome = fleetGlow && s.id === fleetGlow.homeId;
         const isFleetAdjacent = fleetGlow && fleetGlow.adjacent.has(s.id);
         const visMarkers = overview ? [] : s.markers.filter((m) => { const L = layerById(m.layerId); return L && L.visible; });
-        const plate = overview ? 14 : 34; const half = plate / 2;
+        const nSub = subregionCount(s);
+        // Zoomed into detail the plate becomes the main node's circle, sized in world
+        // units so it grows with the ring of slices around it.
+        const plate = overview ? 14 : detail ? MAIN_R * 2 * view.scale : 34; const half = plate / 2;
+        // slices holding the selected fleet/agent light up
+        const litPiece = detail && (selFleetObj && selFleetObj.systemId === s.id ? selFleetObj
+          : selAgentObj && selAgentObj.systemId === s.id ? selAgentObj : null);
+        const lit = litPiece ? new Set([subregionKey(s, litPiece.subregion)]) : null;
+        const belowRing = detail && nSub > 0 ? (RING_OUT - MAIN_R) * view.scale : 0;
         return (
           <div key={s.id} data-piece="1" className="piece-hover-zone"
             onPointerDown={(e) => startPieceDrag(e, "system", s.id, s.x, s.y)}
@@ -287,9 +297,11 @@ export default function MapCanvas({
                   <Ghost size={9} />
                 </div>
               )}
-              <SystemPlate factionId={fac.id} factionColor={fac.color} overview={overview} />
+              {detail && <SubregionRing system={s} factionColor={fac.color} scale={view.scale} lit={lit} />}
+              <SystemPlate factionId={fac.id} factionColor={fac.color} overview={overview}
+                round={detail} symbolSize={detail ? Math.max(18, plate * 0.5) : 18} />
             </div>
-            {!overview && <SystemLabel name={s.name} />}
+            {!overview && <div style={{ marginTop: belowRing }}><SystemLabel name={s.name} /></div>}
             {!overview && visMarkers.length > 0 && (
               <div style={{ display: "flex", gap: 3, justifyContent: "center", flexWrap: "wrap",
                 maxWidth: 116, margin: "3px auto 0" }}>
@@ -424,7 +436,7 @@ export default function MapCanvas({
       <div style={{ position: "absolute", left: 12, bottom: 10, zIndex: 32, pointerEvents: "none",
         padding: "6px 10px", fontSize: 10.5, color: T.mut,
         maxWidth: isMobile ? containerSize.w - 24 : 340, lineHeight: 1.5, ...floatingPanel }}>
-        {mode === "select" && canEdit && <span><b style={{ color: T.text }}>Select</b> · drag systems & fleets · click a fleet for its roster · drag empty space to pan · scroll to zoom · double-click to add a system{overview && <> · <b style={{ color: T.amber }}>zoomed out</b>, names & status icons hidden</>}</span>}
+        {mode === "select" && canEdit && <span><b style={{ color: T.text }}>Select</b> · {detail ? "drop fleets & agents into a subregion · " : "zoom in close to see subregions · "}drag systems & fleets · click a fleet for its roster · drag empty space to pan · scroll to zoom · double-click to add a system{overview && <> · <b style={{ color: T.amber }}>zoomed out</b>, names & status icons hidden</>}</span>}
         {mode === "select" && !canEdit && <span><b style={{ color: T.amber }}>View only</b> · click a system or fleet to see its details · drag empty space to pan · scroll to zoom · unlock editing from the toolbar{overview && <> · <b style={{ color: T.amber }}>zoomed out</b>, names & status icons hidden</>}</span>}
         {mode === "link" && <span><b style={{ color: T.amber }}>Link</b> · click one system, then another to connect or disconnect their hyperlane</span>}
         {mode === "draw" && <span><b style={{ color: T.accent }}>Draw</b> · sketch freely · pieces are locked · use Undo / Clear above</span>}
@@ -456,7 +468,7 @@ export default function MapCanvas({
           addSquadron={addSquadron} patchSquadron={patchSquadron} removeSquadron={removeSquadron}
           onShipDragStart={(ship, e) => beginShipDrag(ship, selFleetObj.id, e)}
           goToFleet={goToFleet} roles={roles} art={art}
-          canOrderFor={canOrderFor} submitMission={submitMission}
+          canOrderFor={canOrderFor} submitMission={submitMission} systems={systems} links={links}
           onOpenFleetTransfer={openFleetTransfer}
           incoming={incoming} viewerFactionId={viewerFactionId}
         />

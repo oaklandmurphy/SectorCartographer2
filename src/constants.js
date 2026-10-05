@@ -13,7 +13,8 @@ import {
 export const KNOWN_CODE_KEY = "galaxy-sector-known-code:v1"; // personal: the code this browser/account has entered
 
 export const MIN_ZOOM = 0.1;   // 10% — far enough out to see a whole large sector at once
-export const MAX_ZOOM = 3;     // 300%
+export const MAX_ZOOM = 6;     // 600%
+export const DETAIL_ZOOM = 1.6;   // at or above this scale, systems open up to show their subregions (pie slices) and pieces sit in them
 export const OVERVIEW_ZOOM = 0.45; // at or below this scale, systems simplify to plain markers (names/status icons hidden)
 
 // Discord role the GM pings when announcing a codex article — the "@everyone in

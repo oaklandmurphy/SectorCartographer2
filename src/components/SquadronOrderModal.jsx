@@ -3,6 +3,8 @@ import { X, Rocket, Swords, Send, TriangleAlert } from "lucide-react";
 import { T, F, panelStyle, inputStyle, selStyle, lbl, cut } from "../theme.js";
 import { squadronsOf } from "../lib/carriers.js";
 import { ARMY_ORDER_CATEGORIES } from "../lib/armyOrderCategories.js";
+import { MISSION_TYPES, targetableSystems } from "../lib/missionTypes.js";
+import { subregionOptions } from "../lib/subregions.js";
 import { useDraft } from "../hooks/useDraft.js";
 import Btn from "./ui/Btn.jsx";
 import AutoTextarea from "./ui/AutoTextarea.jsx";
@@ -16,8 +18,9 @@ import AutoTextarea from "./ui/AutoTextarea.jsx";
 //
 // The same composer serves Army orders: pass `army` instead of `fleet` and the
 // rows become that army's divisions (an army has no carriers, so each row is
-// just a division type), with the wording to match.
-export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onSubmit }) {
+// just a division type), with the wording to match. Army orders carry a
+// category; squadron orders carry a mission type and a target subregion.
+export default function SquadronOrderModal({ fleet, army, systems = [], links = [], isMobile, onClose, onSubmit }) {
   const unit = army || fleet;
   const isArmy = !!army;
   const Icon = isArmy ? Swords : Rocket;
@@ -25,7 +28,7 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
   // Kept in localStorage (keyed per fleet) so a half-written order survives
   // closing this modal to check something else, or FleetView unmounting
   // entirely from a tab switch — cleared only once the order actually submits.
-  const [draft, setDraft, clearDraft] = useDraft(`galaxy-sector-draft-${isArmy ? "army" : "squadron"}-order:${unit.id}:v1`, { counts: {}, text: "", category: "" });
+  const [draft, setDraft, clearDraft] = useDraft(`galaxy-sector-draft-${isArmy ? "army" : "squadron"}-order:${unit.id}:v1`, { counts: {}, text: "", category: "", missionType: "", systemId: "", subregionId: "" });
   const counts = draft.counts; // squadronId -> typed text
   const text = draft.text;
   const setCounts = (next) => setDraft((d) => ({ ...d, counts: typeof next === "function" ? next(d.counts) : next }));
@@ -33,6 +36,18 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
   // Army orders must be filed under a category; squadron orders have none.
   const category = ARMY_ORDER_CATEGORIES.some((c) => c.id === draft.category) ? draft.category : "";
   const setCategory = (v) => setDraft((d) => ({ ...d, category: v }));
+
+  // Targets: the fleet's own system or any system one link away, then one of
+  // that system's subregions. A saved draft may point at something that no
+  // longer exists, so it's validated against the live lists.
+  const targetSystems = useMemo(() => targetableSystems(systems, links, fleet ? fleet.systemId : null), [systems, links, fleet]);
+  const targetSystem = targetSystems.find((s) => s.id === draft.systemId) || null;
+  const subregions = targetSystem ? subregionOptions(targetSystem) : [];
+  const subregion = subregions.find((r) => r.key === draft.subregionId) || null;
+  const missionType = MISSION_TYPES.some((t) => t.id === draft.missionType) ? draft.missionType : "";
+  const setSystem = (id) => setDraft((d) => ({ ...d, systemId: id, subregionId: "" }));
+  const setSubregion = (id) => setDraft((d) => ({ ...d, subregionId: id }));
+  const setMissionType = (id) => setDraft((d) => ({ ...d, missionType: id }));
 
   // Every squadron across the fleet's carriers that has craft available right
   // now — one with nothing left in it (already fully committed elsewhere) has
@@ -57,18 +72,22 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
 
   const commitFor = (row) => Math.min(row.avail, Math.max(0, Math.floor(Number(counts[row.squadronId]) || 0)));
   const total = rows.reduce((n, r) => n + commitFor(r), 0);
-  const ready = !!text.trim() && total > 0 && (!isArmy || !!category);
 
   const setCount = (squadronId, v) => setCounts((c) => ({ ...c, [squadronId]: v }));
   const setAll = (row) => setCount(row.squadronId, String(row.avail));
   const setNone = (row) => setCount(row.squadronId, "0");
 
+  const ready = !!text.trim() && total > 0
+    && (isArmy ? !!category : !!missionType && !!targetSystem && !!subregion);
   const submit = () => {
     if (!ready) return;
     const detachments = rows
       .map((r) => ({ shipId: r.shipId, squadronId: r.squadronId, model: r.model, count: commitFor(r) }))
       .filter((d) => d.count > 0);
-    onSubmit(detachments, text, isArmy ? { category } : undefined);
+    onSubmit(detachments, text, isArmy ? { category } : {
+      missionType,
+      target: { systemId: targetSystem.id, systemName: targetSystem.name || "", subregionId: subregion.key, subregionName: subregion.name },
+    });
     clearDraft();
   };
 
@@ -145,6 +164,40 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
             </div>
           )}
 
+          {!isArmy && (<>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={lbl}>Mission type</span>
+            <select value={missionType} onChange={(e) => setMissionType(e.target.value)} style={selStyle}>
+              <option value="">Select mission type…</option>
+              {MISSION_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={lbl}>Target</span>
+            {targetSystems.length === 0 ? (
+              <div style={{ fontSize: 11.5, color: T.faint }}>
+                This fleet isn't in a system, so it has nowhere to send a squadron mission.
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <select value={targetSystem ? targetSystem.id : ""} onChange={(e) => setSystem(e.target.value)}
+                  style={{ ...selStyle, flex: 1, minWidth: 140 }}>
+                  <option value="">Select system…</option>
+                  {targetSystems.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name || "Unnamed system"}{s.id === fleet.systemId ? " (current)" : ""}</option>
+                  ))}
+                </select>
+                <select value={subregion ? subregion.key : ""} onChange={(e) => setSubregion(e.target.value)}
+                  disabled={!targetSystem} style={{ ...selStyle, flex: 1, minWidth: 140 }}>
+                  <option value="">Select subregion…</option>
+                  {subregions.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          </>)}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={lbl}>Mission</span>
             <AutoTextarea value={text} onChange={(e) => setText(e.target.value)} autoFocus
@@ -172,7 +225,9 @@ export default function SquadronOrderModal({ fleet, army, isMobile, onClose, onS
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             <Btn onClick={onClose}>Cancel</Btn>
             <Btn kind="primary" onClick={submit} disabled={!ready}
-              title={total === 0 ? `Commit at least one ${noun}` : isArmy && !category ? "Choose a category" : !text.trim() ? "Describe the mission first" : "Send this order to the GM"}>
+              title={total === 0 ? `Commit at least one ${noun}` : isArmy && !category ? "Choose a category"
+                : !isArmy && !missionType ? "Choose a mission type"
+                : !isArmy && !subregion ? "Choose a target system and subregion" : !text.trim() ? "Describe the mission first" : "Send this order to the GM"}>
               <Send size={13} /> Submit
             </Btn>
           </div>

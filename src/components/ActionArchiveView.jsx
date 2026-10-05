@@ -4,6 +4,7 @@ import { T, F, lbl, selStyle } from "../theme.js";
 import { armyCategoryLabel } from "../lib/armyOrderCategories.js";
 import Btn from "./ui/Btn.jsx";
 import ActionResolution from "./ui/ActionResolution.jsx";
+import { missionTargetLine } from "../lib/missionTypes.js";
 import MissionResolution from "./ui/MissionResolution.jsx";
 
 // A player's own record of everything they've put in front of the GM: agent
@@ -76,6 +77,7 @@ export default function ActionArchiveView({
       issuerLabel: m.armyId ? armyLabel(m.armyId) : fleetLabel(m.fleetId),
       status: m.status, resolution: m.resolution, text: m.text,
       detachments: m.detachments || [], category: m.category,
+      missionType: m.missionType, target: m.target,
       createdAt: m.createdAt || 0, resolvedAt: m.resolvedAt || 0,
     });
     (actions || []).forEach((a) => pushAction(a, curTurn));
@@ -179,6 +181,9 @@ export default function ActionArchiveView({
           )}
           {!isAction && armyCategoryLabel(it.category) && (
             <span className="mono" style={{ fontSize: 10.5, color: T.accent }}>{armyCategoryLabel(it.category)}</span>
+          )}
+          {!isAction && missionTargetLine(it) && (
+            <span className="mono" style={{ fontSize: 10.5, color: T.accent }}>{missionTargetLine(it)}</span>
           )}
           <span style={{ marginLeft: "auto", fontSize: 9.5, color: T.faint }}>
             {fmtDateTime(it.createdAt)}

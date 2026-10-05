@@ -15,8 +15,11 @@ Six views, switched from the toolbar and each with its own URL:
 
 - **Map** — the sector itself. Place star systems, connect them with hyperlanes,
   drop fleet markers, and draw freehand over the top for borders and staging
-  arrows. Pan, zoom, and drag anything; below 25% zoom systems collapse to plain
-  markers so a large sector stays readable.
+  arrows. Pan, zoom, and drag anything; below 45% zoom systems collapse to plain
+  markers so a large sector stays readable, and at 160% or closer each system opens into its
+  **subregions**: a circular main node (`Primag-main`) ringed by a GM-set number of pie slices
+  (`Primag-1`, `Primag-2`...). Fleets and agents are tied to a subregion; drop one into a slice
+  when zoomed in, or pick it from the fleet/agent popup.
 - **Fleets** — who commands what. A fleet's carriers, each carrier's hangar of
   squadrons, and a compare mode for reading two fleets side by side. Also home to
   the ship art library. See [Fleets, carriers & squadrons](#fleets-carriers--squadrons).
@@ -35,8 +38,6 @@ Six views, switched from the toolbar and each with its own URL:
 - **Codex** — the setting wiki: factions, characters, locations, lore, rules and
   misc. Entries are plain text, cross-link to each other, and support
   [CSV tables](#tables-in-codex-entries) for rosters and stat blocks.
-- **Odds** — a standalone 2d6 mission-resolution table for settling an engagement
-  at the table. See [Mission odds](#mission-odds).
 
 Editing is gated by a **GM code**, and content can be revealed per player — see
 [asymmetric-information play](#asymmetric-information-play-player-roles--visibility).
@@ -207,7 +208,7 @@ src/
   lib/visibility.js     who may see a given entry or carrier — see "Asymmetric-information play"
   lib/routing.js        which page a URL means, and vice versa — see "Linking to a page"
   lib/codexBody.js      codex body text -> prose + ```csv table segments — see "Tables in codex entries"
-  lib/missionOdds.js    the mission odds table — E, success grades, casualties — see "Mission odds"
+  lib/missionOdds.js    success grades and casualty percentages used to resolve squadron missions
   hooks/useMapInteractions.js       pan/zoom/drag/draw — all the map's DOM/pointer/canvas logic
   hooks/usePoliticsInteractions.js  the same, for the politics graph
   hooks/useResponsive.js            mobile breakpoint tracking
@@ -258,41 +259,6 @@ Two places, for two jobs:
 
 Fleets no longer link to codex entries — the Fleets tab replaced that. Systems,
 factions, characters and organizations still link to the codex as before.
-
-## Mission odds
-
-The **Odds** tab is a dice reference for resolving an engagement. It is
-deliberately **not wired to the sector**: no fleet, carrier or squadron feeds it,
-nothing it computes is saved, and bouncing to another tab and back resets it. You
-type the numbers in and read the result off, the way you would with a table in a
-rulebook — which is what lets it resolve the things the map doesn't model
-(a boarding action, a ground assault, a raid on something that isn't a fleet).
-
-Everything reduces to one number, **E**:
-
-```
-E = 2d6 + force-ratio shift + the relevant mission shift
-```
-
-E maps to a **success grade** (0–5) and to a **casualty percentage**. Outcome and
-casualties take *separate* mission shifts and so get separate Es — which is how a
-battle gets won badly, or lost cheaply.
-
-- **Your vessels / Enemy vessels** — type both and the **Force ratio** column snaps
-  to the nearest match. The snap is by ratio, not by difference, so 2:1 sits the
-  same distance from 1:1 as 1:2 does. A line under the controls shows what it
-  picked, and warns when the two forces are further apart than the table's end
-  columns can express.
-- **Force ratio** — or just pick the column yourself and ignore the vessel counts.
-  Picking by hand overrides the snap (the line says so); you rarely have a
-  headcount for an orbital bombardment, but you always have one for a fleet action.
-- **Outcome shift / Casualty shift** — whatever the mission is worth, −12 to +12.
-- **2d6 roll** — type the dice you rolled, or hit **Roll 2d6** to have it rolled for you.
-
-The readout answers the question; the table below is the whole grid, with your
-current row and column picked out. Grade colour runs worst → best, but it's only a
-scan aid: every cell prints its grade and casualty figure, so nothing is carried by
-colour alone.
 
 ## News and article updates
 
@@ -429,7 +395,6 @@ exactly what you're looking at:
 | `#/codex/lore/wk_193_iltz` | a single codex entry |
 | `#/modifiers` | the faction modifiers tab |
 | `#/modifiers/fac_gorbulon` | that faction's modifiers subtab |
-| `#/odds` | the mission odds table |
 
 e.g. `https://your-deployed-url/#/codex/lore/wk_193_iltz`. The ids are the
 ones in the URL bar — open the thing you want to link to and copy the address.
@@ -439,10 +404,7 @@ GM-only entry and they get the codex, not the entry (see
 [asymmetric-information play](#asymmetric-information-play-player-roles--visibility)).
 
 Map popups are deliberately *not* in the URL — clicking systems and fleets on the
-map would otherwise fill the Back button with a click-by-click history. The odds
-tool's inputs stay out for the same reason: `#/odds` links to the tool, not to a
-particular calculation, and putting every keystroke in the hash would make Back
-useless.
+map would otherwise fill the Back button with a click-by-click history.
 
 Routes live after a `#` rather than as real paths (`/codex/lore/...`) so that a
 deep link works on any static host, at any host path, with no SPA rewrite rule to
