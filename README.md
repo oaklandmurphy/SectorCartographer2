@@ -30,6 +30,11 @@ Five views, switched from the toolbar and each with its own URL:
   misc. Entries are plain text, cross-link to each other, and support
   [CSV tables](#tables-in-codex-entries) for rosters and stat blocks.
 
+- **Objectives** — what the players are supposed to be doing to win. The GM sets
+  **Metrics** (ongoing stats stepped up and down by hand, each unit worth a set number
+  of points) and **Goals** (large military or narrative events that award a lump sum
+  when toggled achieved). A running point total sits at the top. Manual for now.
+
 Editing is gated by a **GM code**, and content can be revealed per player — see
 [asymmetric-information play](#asymmetric-information-play-player-roles--visibility).
 Anyone with the link gets a read-only public view with no code at all.

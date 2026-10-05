@@ -45,7 +45,7 @@ export const COLLECTIONS = [
   "factions", "relations", "layers", "systems",
   "links", "fleets", "ships", "strokes", "roles", "modifiers", "resources", "resourceTransactions",
   "projects", "surfaceForces", "surfaceBattles", "agents", "orders", "actions", "missions",
-  "replenishments", "turns", "endTurnChecks", "threads",
+  "replenishments", "turns", "endTurnChecks", "threads", "objectives",
 ];
 
 // Ship art and the wiki index each get their own top-level path (sectorArt/
@@ -153,6 +153,12 @@ const defaults = {
   // with. The Timeline draws one line per thread connecting its articles in
   // chronological order. Articles reference threads by id via `threadIds`.
   threads: { name: "", color: "#9fc23a" },
+  // What the players are supposed to be doing to win (Objectives tab), GM-managed
+  // and visible to everyone. `type` is "metric" (an ongoing stat the GM nudges up
+  // and down by hand: `value` units, each worth `pointsPer`, so it contributes
+  // value * pointsPer) or "goal" (a large military/narrative event that pays a
+  // lump `points` once `achieved` is toggled on).
+  objectives: { type: "metric", name: "", text: "", value: 0, pointsPer: 1, points: 0, achieved: false },
   agents: { name: "", memberId: null, notes: "", systemId: null, actionCap: 0, icon: null, x: 0, y: 0 },
   orders: { path: [], committed: false },
   actions: { modifierIds: [], text: "", status: "pending", resolution: null },

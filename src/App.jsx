@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
-import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff } from "lucide-react";
+import { Map as MapIcon, Library, Satellite, Network, Ship, Package, Bell, Gavel, VenetianMask, Menu, ChevronDown, ChevronUp, Eye, EyeOff, History, Archive, ImageOff, Target } from "lucide-react";
 import { T, F, panelStyle, cut } from "./theme.js";
 import { KNOWN_CODE_KEY, ROLE_COLORS, DEFAULT_SQUADRON_SIZE, GM_RECIPIENT, MIN_ZOOM, MAX_ZOOM, DETAIL_ZOOM } from "./constants.js";
 import { detailPositions, subregionAt, storedSubregion, subregionOptions } from "./lib/subregions.js";
@@ -39,6 +39,7 @@ const AssetsView = lazy(() => import("./components/AssetsView.jsx"));
 const UpdatesView = lazy(() => import("./components/UpdatesView.jsx"));
 const AgentsView = lazy(() => import("./components/AgentsView.jsx"));
 const GMToolsView = lazy(() => import("./components/GMToolsView.jsx"));
+const ObjectivesView = lazy(() => import("./components/ObjectivesView.jsx"));
 const TimelineView = lazy(() => import("./components/TimelineView.jsx"));
 const ActionArchiveView = lazy(() => import("./components/ActionArchiveView.jsx"));
 
@@ -90,6 +91,7 @@ export default function GalaxySectorMap() {
   const [replenishments, setReplenishments] = useState([]); // strike-craft top-ups the GM stages per fleet each turn — applied on nextTurn (GM Tools: Replenish tab)
   const [replenishmentReads, setReplenishmentReads] = useState([]); // shared per-faction "seen this replenishment" receipts, same idea as missionReads
   const [threads, setThreads] = useState([]); // shared: narrative threads { id, name, color } the GM tags news articles with — the Timeline draws one connecting line per thread
+  const [objectives, setObjectives] = useState([]); // shared: win-condition objectives the GM manages (Objectives tab) — "metric" counters and "goal" lump-sum toggles, all manual for now
   const [endTurnChecks, setEndTurnChecks] = useState([]); // per-turn end-of-turn checks the GM manages (GM Tools: End of Turn Checks tab) — the ossite surplus check today; applied on nextTurn
 
   const [mode, setMode] = useState("select"); // select | link | draw | orders
@@ -175,8 +177,8 @@ export default function GalaxySectorMap() {
   // and now also `wiki` and `art` (see the wiki/art load-and-autosave block
   // further down), pulled off the hot root listener for the same reason.
   const sector = useMemo(
-    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber }),
-    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, endTurnChecks, lockCode, fleetsPublic, turnNumber],
+    () => ({ factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, objectives, endTurnChecks, lockCode, fleetsPublic, turnNumber }),
+    [factions, relations, layers, systems, links, fleets, strokes, roles, modifiers, resources, resourceTransactions, projects, surfaceForces, surfaceBattles, agents, orders, actions, missions, replenishments, turns, threads, objectives, endTurnChecks, lockCode, fleetsPublic, turnNumber],
   );
   // The sector as the database currently has it. Null until the load below fills
   // it in, which is also what stops an autosave from firing against an empty
@@ -227,7 +229,7 @@ export default function GalaxySectorMap() {
       setAgents(data.agents); setOrders(data.orders); setActions(data.actions);
       setMissions(data.missions);
       setReplenishments(data.replenishments);
-      setTurns(data.turns); setThreads(data.threads); setEndTurnChecks(data.endTurnChecks);
+      setTurns(data.turns); setThreads(data.threads); setObjectives(data.objectives); setEndTurnChecks(data.endTurnChecks);
       setLockCode(data.lockCode); setFleetsPublic(data.fleetsPublic !== false);
       setTurnNumber(data.turnNumber || 0);
     };
@@ -2036,6 +2038,22 @@ export default function GalaxySectorMap() {
       if (e && e.status !== "draft" && e.status !== "pending") syncFactionNode({ ...e, ...p });
     }
   }
+  // Objectives (Objectives tab): GM-only edits, visible to every viewer.
+  function addObjective(type) {
+    if (!isGM) return;
+    const goal = type === "goal";
+    setObjectives((os) => [...os, goal
+      ? { id: uid("obj"), type: "goal", name: "", text: "", points: 10, achieved: false, createdAt: Date.now() }
+      : { id: uid("obj"), type: "metric", name: "", text: "", value: 0, pointsPer: 1, createdAt: Date.now() }]);
+  }
+  function patchObjective(id, p) {
+    if (!isGM) return;
+    setObjectives((os) => os.map((o) => (o.id === id ? { ...o, ...p } : o)));
+  }
+  function removeObjective(id) {
+    if (!isGM) return;
+    setObjectives((os) => os.filter((o) => o.id !== id));
+  }
   // Narrative threads (Timeline): GM-managed, tagged onto articles via threadIds.
   function addThread(name) {
     if (!canEdit) return null;
@@ -2807,6 +2825,7 @@ export default function GalaxySectorMap() {
     { id: "fleet", label: "Fleets", icon: Ship, title: "Fleet rosters", show: true },
     { id: "agents", label: "Agents", icon: VenetianMask, title: "Agents & operatives", show: canOrder },
     { id: "assets", label: "Assets", icon: Package, title: "Faction assets: modifiers, trackers, resources, projects & surface forces", show: true },
+    { id: "objectives", label: "Objectives", icon: Target, title: "Objectives: metrics and goals that track what players need to do to win", show: true },
     { id: "politics", label: "Politics", icon: Network, title: "Faction politics", show: true },
     { id: "codex", label: "Codex", icon: Library, title: "Setting codex / wiki", show: true,
       badge: canEdit ? pendingWikiCount : 0 },
@@ -3165,6 +3184,11 @@ export default function GalaxySectorMap() {
             surfaceBattles={displaySurfaceBattles}
             addSurfaceBattle={addSurfaceBattle} patchSurfaceBattle={patchSurfaceBattle} removeSurfaceBattle={removeSurfaceBattle}
           />
+        )}
+
+        {activeTab === "objectives" && (
+          <ObjectivesView objectives={objectives} isGM={isGM} isMobile={isMobile}
+            addObjective={addObjective} patchObjective={patchObjective} removeObjective={removeObjective} />
         )}
 
         {activeTab === "agents" && (
